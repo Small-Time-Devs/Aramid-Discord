@@ -5,7 +5,7 @@ import path from 'path';
 import bs58 from 'bs58';
 import promiseRetry from 'promise-retry';
 import fetch from "node-fetch";
-import { globalStaticConfig, globalURLS } from '../../../../../../src/globals/globals.mjs';
+import { globalStaticConfig, globalURLS } from '../../../../../../src/globals/global.mjs';
 import { Keypair, Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { createTransferInstruction, createAssociatedTokenAccountInstruction, getOrCreateAssociatedTokenAccount, AccountLayout, 
   TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, createCloseAccountInstruction  } from '@solana/spl-token';

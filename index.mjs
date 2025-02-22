@@ -11,6 +11,7 @@ import dotenv from 'dotenv';
 import { registerDiscordUser } from './src/db/dynamo.mjs';
 import { checkAndHandleDisclaimer, handleDisclaimerResponse } from './src/utils/disclaimer.mjs';
 import { enable2FA, handle2FAVerification, require2FASetup } from './src/utils/2fa.mjs';
+import { registerWalletHandlers } from './src/actions/wallet.mjs';
 
 dotenv.config();
 
@@ -49,11 +50,15 @@ client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
     try {
-        // Register user on first message
-        await registerDiscordUser(
-            message.author.id,
-            message.author.username
-        );
+        // Try to register user but don't fail if it errors
+        try {
+            await registerDiscordUser(
+                message.author.id,
+                message.author.username
+            );
+        } catch (error) {
+            console.warn('Non-critical error registering user:', error);
+        }
 
         // Command handler
         if (message.content.startsWith('!')) {
@@ -85,7 +90,9 @@ client.on('messageCreate', async (message) => {
         }
     } catch (error) {
         console.error('Message handling error:', error);
-        await sendErrorMessage(message.channel, error);
+        await sendErrorMessage(message.channel, {
+            message: 'An error occurred processing your command. Please try again.'
+        });
     }
 });
 
@@ -93,24 +100,22 @@ client.on('messageCreate', async (message) => {
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
 
-    // Handle disclaimer responses
+    // Handle disclaimer responses first
     if (interaction.customId === 'agree_terms' || interaction.customId === 'disagree_terms') {
         await handleDisclaimerResponse(interaction);
         return;
     }
 
-    // Check disclaimer before processing other buttons
-    const hasAgreed = await checkAndHandleDisclaimer(interaction);
-    if (!hasAgreed) return;
-
-    console.log(`Button ${interaction.customId} clicked by ${interaction.user.tag}`);
-    
     try {
         // Register user on first interaction
         await registerDiscordUser(
             interaction.user.id,
             interaction.user.username
         );
+
+        // Check disclaimer before processing other buttons
+        const hasAgreed = await checkAndHandleDisclaimer(interaction);
+        if (!hasAgreed) return;
 
         // Delete the previous menu message if it exists
         if (lastMenuMessage) {
@@ -124,15 +129,8 @@ client.on('interactionCreate', async (interaction) => {
             if (!has2FA) return;
         }
 
+        // Handle different button interactions
         switch (interaction.customId) {
-            case 'view_wallet':
-                console.log('Wallet view requested');
-                await interaction.reply('Wallet viewing functionality coming soon!');
-                break;
-            case 'research_token':
-                console.log('Token research requested');
-                await interaction.reply('Enter the token address you want to research:');
-                break;
             case 'chain_selection':
                 console.log('Chain selection menu opened');
                 lastMenuMessage = await sendChainSelection(interaction.channel);
@@ -140,16 +138,37 @@ client.on('interactionCreate', async (interaction) => {
                 break;
             case 'chain_solana':
                 console.log('Solana chain selected');
-                await interaction.reply('Solana chain selected!');
+                await interaction.deferReply({ ephemeral: true });
+                await interaction.editReply('Solana chain selected!');
                 break;
             case 'chain_ethereum':
                 console.log('Ethereum chain selected');
-                await interaction.reply('Ethereum chain selected!');
+                await interaction.deferReply({ ephemeral: true });
+                await interaction.editReply('Ethereum chain selected!');
                 break;
+            // Let the wallet handlers handle wallet-related buttons
+            case 'view_wallet':
+            case 'generate_wallet':
+            case 'refresh_wallet':
+            case 'show_private_key':
+            case 'set_withdraw_address':
+            case 'send_sol':
+                return; // Let the wallet handlers handle these
+            default:
+                console.log(`Unhandled button interaction: ${interaction.customId}`);
+                await interaction.reply({
+                    content: 'This feature is not yet implemented.',
+                    flags: { ephemeral: true }
+                });
         }
     } catch (error) {
         console.error('Interaction error:', error);
-        await sendErrorMessage(interaction.channel, error);
+        if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({
+                content: '❌ An error occurred. Please try again.',
+                flags: { ephemeral: true }
+            }).catch(console.error);
+        }
     }
 });
 
@@ -186,6 +205,9 @@ client.on('interactionCreate', async (interaction) => {
         await handle2FAVerification(interaction);
     }
 });
+
+// Add wallet handlers registration
+registerWalletHandlers(client);
 
 // Error handling
 client.on('error', (error) => {

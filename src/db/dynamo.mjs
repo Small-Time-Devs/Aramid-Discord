@@ -34,10 +34,10 @@ export async function checkUserWallet(userId, username) {
     console.log(`Checking for Discord user: ${userId}`);
 
     try {
-        // Get user from users table using number directly
+        // Get user from users table
         const userData = await docClient.send(new GetCommand({
             TableName: usersTableName,
-            Key: { userID: userId.toString() }
+            Key: { userID: userId.toString() } // Changed to match other functions
         }));
 
         if (userData.Item) {
@@ -49,31 +49,33 @@ export async function checkUserWallet(userId, username) {
             // Fetch from address book
             const addressBookData = await docClient.send(new GetCommand({
                 TableName: addressBookTableName,
-                Key: { userId: userId.toString() }
+                Key: { userID: userId.toString() } // Changed to match schema
             }));
 
             if (!addressBookData.Item) {
                 // Create empty address book entry
-                addressBookData.Item = { userId: userId.toString() };
                 await docClient.send(new PutCommand({
                     TableName: addressBookTableName,
-                    Item: { userId: userId.toString() }
+                    Item: { 
+                        userID: userId.toString(), // Changed to match schema
+                        username: username
+                    }
                 }));
             }
 
             // Generate wallets if they don't exist
-            if (!addressBookData.Item.solPublicKey || !addressBookData.Item.solPrivateKey) {
+            if (!addressBookData.Item?.solPublicKey || !addressBookData.Item?.solPrivateKey) {
                 await generateSolanaWallet(userId);
             }
 
-            if (!addressBookData.Item.xrpPublicKey || !addressBookData.Item.xrpPrivateKey) {
+            if (!addressBookData.Item?.xrpPublicKey || !addressBookData.Item?.xrpPrivateKey) {
                 await generateXrpWallet(userId);
             }
 
             return {
                 exists: true,
-                solPublicKey: addressBookData.Item.solPublicKey,
-                xrpPublicKey: addressBookData.Item.xrpPublicKey,
+                solPublicKey: addressBookData.Item?.solPublicKey,
+                xrpPublicKey: addressBookData.Item?.xrpPublicKey,
                 twoFactorEnabled: userData.Item.twoFactorEnabled || false,
                 username: userData.Item.username,
                 referredBy: userData.Item.referredBy
@@ -111,7 +113,7 @@ export async function storeSolanaWallet(userId, solPublicKey, solPrivateKey) {
     try {
         const updateParams = {
             TableName: addressBookTableName,
-            Key: { userId: userId.toString() },
+            Key: { userID: userId.toString() }, // Changed to match schema
             UpdateExpression: 'set solPublicKey = :solPublicKey, solPrivateKey = :solPrivateKey',
             ExpressionAttributeValues: {
                 ':solPublicKey': solPublicKey,
@@ -134,7 +136,7 @@ export async function storeXrpWallet(userId, xrpPublicKey, xrpPrivateKey) {
     try {
         const updateParams = {
             TableName: addressBookTableName,
-            Key: { userId: userId.toString() },
+            Key: { userID: userId.toString() }, // Changed userId to userID
             UpdateExpression: 'set xrpPublicKey = :xrpPublicKey, xrpPrivateKey = :xrpPrivateKey',
             ExpressionAttributeValues: {
                 ':xrpPublicKey': xrpPublicKey,
