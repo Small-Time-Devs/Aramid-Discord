@@ -34,10 +34,10 @@ export async function checkUserWallet(userId, username) {
     console.log(`Checking for Discord user: ${userId}`);
 
     try {
-        // Get user from users table
+        // Get user from users table using number directly
         const userData = await docClient.send(new GetCommand({
             TableName: usersTableName,
-            Key: { userId: userId.toString() }
+            Key: { userID: userId.toString() }
         }));
 
         if (userData.Item) {
@@ -193,7 +193,7 @@ export async function updateUserName(userId, username) {
     try {
         await docClient.send(new UpdateCommand({
             TableName: tableName,
-            Key: { userId: userId.toString() },
+            Key: { userId: userId.toString() }, // Use number directly
             UpdateExpression: 'set username = :username',
             ExpressionAttributeValues: {
                 ':username': username,
@@ -268,13 +268,13 @@ export async function checkUserAgreement(userId) {
     try {
         const userData = await docClient.send(new GetCommand({
             TableName: 'AramidDiscord-Terms',
-            Key: { userId: userId.toString() },
+            Key: { userID: userId.toString() } // Changed userId to userID
         }));
 
         return { agreed: !!userData.Item };
     } catch (error) {
         console.error('Error checking user agreement:', error);
-        throw error;
+        return { agreed: false };
     }
 }
 
@@ -283,16 +283,17 @@ export async function storeUserAgreement(userId, username) {
         await docClient.send(new PutCommand({
             TableName: 'AramidDiscord-Terms',
             Item: {
-                userId: userId.toString(),
+                userID: userId.toString(), // Changed userId to userID
                 username: username,
                 agreedAt: new Date().toISOString(),
             },
         }));
 
         console.log(`User agreement stored for Discord user: ${userId}`);
+        return true;
     } catch (error) {
         console.error('Error storing user agreement:', error);
-        throw error;
+        return false;
     }
 }
 
@@ -395,29 +396,41 @@ export async function registerDiscordUser(userId, username, referredBy = '202145
     const tableName = 'AramidDiscord-Users';
     
     try {
-        // Check if user already exists
+        // Store all IDs as strings
+        const userItem = {
+            userID: userId.toString(), // Store as string
+            username: username || 'Unknown',
+            referredBy: referredBy.toString(), // Store as string
+            isBetaUser: true,
+            createdAt: new Date().toISOString()
+        };
+
+        // Check if user exists
         const existingUser = await docClient.send(new GetCommand({
             TableName: tableName,
-            Key: { userId: userId.toString() }
+            Key: { userID: userId.toString() }
         }));
 
         if (!existingUser.Item) {
-            // Register new user
             await docClient.send(new PutCommand({
                 TableName: tableName,
-                Item: {
-                    userId: userId.toString(),
-                    username: username,
-                    referredBy: referredBy,
-                    isBetaUser: true,
-                    createdAt: new Date().toISOString()
-                }
+                Item: userItem
             }));
             console.log(`New Discord user registered: ${username} (${userId})`);
+        } else {
+            await docClient.send(new UpdateCommand({
+                TableName: tableName,
+                Key: { userID: userId.toString() },
+                UpdateExpression: 'SET username = :username',
+                ExpressionAttributeValues: {
+                    ':username': username || 'Unknown'
+                }
+            }));
+            console.log(`Updated existing Discord user: ${username} (${userId})`);
         }
         return true;
     } catch (error) {
         console.error('Error registering Discord user:', error);
-        throw error;
+        return false;
     }
 }
