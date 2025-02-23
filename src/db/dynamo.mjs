@@ -168,7 +168,7 @@ export async function storeSolanaDepositWallet(userId, solanaDepositPublicKey, s
     try {
         const updateParams = {
             TableName: addressBookTableName,
-            Key: { userId: userId.toString() },
+            Key: { userID: userId.toString() }, // Changed userId to userID
             UpdateExpression: 'set solanaDepositPublicKey = :solanaDepositPublicKey, solanaDepositPrivateKey = :solanaDepositPrivateKey',
             ExpressionAttributeValues: {
                 ':solanaDepositPublicKey': solanaDepositPublicKey,
@@ -195,7 +195,7 @@ export async function updateUserName(userId, username) {
     try {
         await docClient.send(new UpdateCommand({
             TableName: tableName,
-            Key: { userId: userId.toString() }, // Use number directly
+            Key: { userID: userId.toString() }, // Use number directly
             UpdateExpression: 'set username = :username',
             ExpressionAttributeValues: {
                 ':username': username,
@@ -215,10 +215,11 @@ export async function save2FASecret(userId, secret) {
     try {
         await docClient.send(new UpdateCommand({
             TableName: addressBookTableName,
-            Key: { userId: userId.toString() },
-            UpdateExpression: 'set twoFactorSecret = :secret',
+            Key: { userID: userId.toString() }, // Changed from userId to userID
+            UpdateExpression: 'set twoFactorSecret = :secret, twoFactorEnabled = :enabled',
             ExpressionAttributeValues: {
                 ':secret': encryptPrivateKey(secret),
+                ':enabled': true
             },
             ReturnValues: 'ALL_NEW',
         }));
@@ -236,7 +237,7 @@ export async function get2FASecret(userId) {
     try {
         const userData = await docClient.send(new GetCommand({
             TableName: addressBookTableName,
-            Key: { userId: userId.toString() },
+            Key: { userID: userId.toString() }, // Changed from userId to userID
         }));
 
         if (userData.Item?.twoFactorSecret) {
@@ -253,7 +254,7 @@ export async function saveReferral(userId, referralCode) {
     try {
         await docClient.send(new UpdateCommand({
             TableName: 'AramidDiscord-Users',
-            Key: { userId: userId.toString() },
+            Key: { userID: userId.toString() }, // Changed userId to userID
             UpdateExpression: 'set referredBy = :referredBy',
             ExpressionAttributeValues: {
                 ':referredBy': referralCode,
@@ -307,7 +308,7 @@ export async function updateSolanaWithdrawAddress(userId, withdrawAddress) {
     try {
         await docClient.send(new UpdateCommand({
             TableName: 'AramidDiscord-AddressBook',
-            Key: { userId: userId.toString() },
+            Key: { userID: userId.toString() }, // Changed userId to userID
             UpdateExpression: 'set solanaWithdrawAddress = :withdrawAddress',
             ExpressionAttributeValues: {
                 ':withdrawAddress': withdrawAddress,
@@ -329,7 +330,7 @@ export async function updateXrpWithdrawAddress(userId, withdrawAddress) {
     try {
         await docClient.send(new UpdateCommand({
             TableName: 'AramidDiscord-AddressBook',
-            Key: { userId: userId.toString() },
+            Key: { userID: userId.toString() }, // Changed userId to userID
             UpdateExpression: 'set xrpWithdrawAddress = :withdrawAddress',
             ExpressionAttributeValues: {
                 ':withdrawAddress': withdrawAddress,
@@ -348,7 +349,7 @@ export async function saveMarketMakingConfig(userId, config) {
         await docClient.send(new PutCommand({
             TableName: 'AramidDiscord-mmSettings',
             Item: {
-                userId: userId.toString(),
+                userID: userId.toString(), // Changed userId to userID
                 ...config,
             },
         }));
@@ -364,7 +365,7 @@ export async function checkMarketMakingConfig(userId) {
     try {
         const userData = await docClient.send(new GetCommand({
             TableName: 'AramidDiscord-mmSettings',
-            Key: { userId: userId.toString() },
+            Key: { userID: userId.toString() }, // Changed userId to userID
         }));
 
         return !!userData.Item;
@@ -382,7 +383,7 @@ export async function storeTrade(tradeDetails) {
             TableName: tableName,
             Item: {
                 ...tradeDetails,
-                userId: tradeDetails.userId.toString()
+                userID: tradeDetails.userId.toString() // Changed userId to userID
             }
         }));
         

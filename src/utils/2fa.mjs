@@ -3,28 +3,46 @@ import qrcode from 'qrcode';
 import { save2FASecret, get2FASecret, checkUserWallet } from '../db/dynamo.mjs';
 
 export async function enable2FA(userId, username) {
-    const secret = speakeasy.generateSecret({ length: 20 });
-    const qrCodeUrl = await qrcode.toDataURL(secret.otpauth_url);
+    try {
+        const secret = speakeasy.generateSecret({ 
+            length: 20,
+            name: `Aramid-${username}`,  // Add app name for better identification
+            issuer: 'Aramid Bot'
+        });
 
-    // Save the secret to the user's account in the database
-    await save2FASecret(userId, secret.base32);
+        // Generate QR code
+        const otpauthUrl = secret.otpauth_url;
+        const qrCodeUrl = await qrcode.toDataURL(otpauthUrl);
 
-    return { 
-        secret: secret.base32, 
-        qrCodeUrl,
-        embed: {
-            title: '🔒 2FA Setup',
-            description: 'Scan this QR code with your authenticator app or enter the secret manually.',
-            fields: [
-                {
-                    name: 'Secret Key',
-                    value: `\`${secret.base32}\``,
-                    inline: false
-                }
-            ],
-            color: 0x00ff00
-        }
-    };
+        // Save to database
+        await save2FASecret(userId, secret.base32);
+
+        return { 
+            secret: secret.base32, 
+            qrCodeUrl,
+            embed: {
+                title: '🔒 2FA Setup',
+                description: 'Scan this QR code with your authenticator app or enter the secret manually.',
+                fields: [
+                    {
+                        name: '📱 Compatible Apps',
+                        value: '• Google Authenticator\n• Authy\n• Microsoft Authenticator',
+                        inline: false
+                    },
+                    {
+                        name: '🔑 Manual Entry',
+                        value: 'If QR scan fails, manually enter this secret:\n' +
+                               `\`${secret.base32}\``,
+                        inline: false
+                    }
+                ],
+                color: 0x00ff00
+            }
+        };
+    } catch (error) {
+        console.error('Error generating 2FA:', error);
+        throw error;
+    }
 }
 
 export async function verify2FACode(userId, token) {
@@ -41,6 +59,15 @@ export async function verify2FACode(userId, token) {
     }
 }
 
+export async function check2FAStatus(userId) {
+    try {
+        const secret = await get2FASecret(userId);
+        return !!secret;  // Returns true if 2FA secret exists
+    } catch (error) {
+        return false;  // Return false if no 2FA found
+    }
+}
+
 export async function handle2FAVerification(interaction) {
     const userId = interaction.user.id;
     const token = interaction.options.getString('code');
@@ -53,6 +80,12 @@ export async function handle2FAVerification(interaction) {
                 content: '✅ 2FA verified successfully!',
                 ephemeral: true
             });
+
+            // Wait a moment before showing the next step
+            setTimeout(async () => {
+                await sendQuickStartSecurity(interaction, 'wallet_security');
+            }, 1500);
+
             return true;
         } else {
             await interaction.reply({

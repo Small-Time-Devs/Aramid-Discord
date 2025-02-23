@@ -1,3 +1,5 @@
+import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+
 export const sendWelcomeMessage = async (channel) => {
     await channel.send({
         embeds: [{
@@ -568,8 +570,19 @@ export const sendQuickStartSecurity = async (interaction, step = '2fa_setup') =>
         rows.push(new ActionRowBuilder().addComponents(buttons));
     }
 
-    await interaction.update({
-        embeds: [embed],
-        components: rows
-    });
+    try {
+        // Update the interaction with the quick start content
+        await interaction.editReply({
+            embeds: [embed],
+            components: rows
+        });
+    } catch (error) {
+        console.error('Error in sendQuickStartSecurity:', error);
+        // If edit fails, try a new reply
+        await interaction.reply({
+            embeds: [embed],
+            components: rows,
+            ephemeral: true
+        });
+    }
 };

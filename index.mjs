@@ -10,8 +10,13 @@ import {
 } from './src/utils/discordMessages.mjs';
 import { handleButtonInteraction } from './src/utils/utils.mjs';
 import { registerWalletHandlers } from './src/actions/wallet.mjs';
-import { handle2FACommands } from './src/utils/2fa.mjs';
+import { handle2FACommands, verify2FACode } from './src/utils/2fa.mjs';
 import dotenv from 'dotenv';
+import { 
+    ModalBuilder, 
+    TextInputBuilder, 
+    TextInputStyle 
+} from 'discord.js';  // Add these imports
 
 dotenv.config();
 
@@ -133,6 +138,41 @@ client.on('interactionCreate', async (interaction) => {
         }
     } catch (error) {
         console.error('Slash command error:', error);
+        await interaction.reply({
+            content: '❌ An error occurred. Please try again.',
+            ephemeral: true
+        }).catch(console.error);
+    }
+});
+
+// Add modal submit handler
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isModalSubmit()) return;
+
+    try {
+        if (interaction.customId === 'verify_2fa_modal') {
+            const code = interaction.fields.getTextInputValue('2fa_code');
+            const isValid = await verify2FACode(interaction.user.id, code);
+
+            if (isValid) {
+                await interaction.reply({
+                    content: '✅ 2FA setup completed successfully!',
+                    ephemeral: true
+                });
+
+                // Wait a moment before showing the next step
+                setTimeout(async () => {
+                    await sendQuickStartSecurity(interaction, 'wallet_security');
+                }, 1500);
+            } else {
+                await interaction.reply({
+                    content: '❌ Invalid 2FA code. Please try again.',
+                    ephemeral: true
+                });
+            }
+        }
+    } catch (error) {
+        console.error('Modal submit error:', error);
         await interaction.reply({
             content: '❌ An error occurred. Please try again.',
             ephemeral: true

@@ -13,6 +13,7 @@ import {
     fetchSolBalance,
     fetchTokenBalances 
 } from '../../applications/spotTrading/src/chains/solana/functions/utils.mjs';
+import { sendMainMenu } from '../utils/discordMessages.mjs';
 
 export async function handleWalletView(interaction) {
     try {
@@ -258,13 +259,24 @@ export function registerWalletHandlers(client) {
                     await handleWalletView(interaction);
                     break;
                 case 'back_to_menu':
-                    // Delete current wallet view
-                    if (interaction.message) {
-                        await interaction.message.delete().catch(console.error);
+                    try {
+                        // Try to delete the message if it exists
+                        if (interaction.message) {
+                            await interaction.message.delete().catch(() => {
+                                console.log('Message already deleted or not found');
+                            });
+                        }
+                        
+                        // Send new menu and defer the interaction
+                        const newMenu = await sendMainMenu(interaction.channel);
+                        await interaction.deferUpdate().catch(console.error);
+                        return newMenu;
+                    } catch (error) {
+                        console.error('Error handling back to menu:', error);
+                        // If something goes wrong, just try to show the menu
+                        await sendMainMenu(interaction.channel);
+                        await interaction.deferUpdate().catch(console.error);
                     }
-                    // Send new main menu
-                    await sendMainMenu(interaction.channel);
-                    await interaction.deferUpdate().catch(console.error);
                     break;
                 // ... other cases ...
             }

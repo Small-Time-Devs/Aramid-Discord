@@ -3,11 +3,21 @@ import { fetchSolBalance, fetchTokenBalances, fetchTokenMap } from '../helpers/s
 import { 
     sendMainMenu, 
     sendChainSelection, 
-    sendHelpMenu 
+    sendHelpMenu,
+    sendQuickStartSecurity  // Add this import
 } from './discordMessages.mjs';
 import { handleDisclaimerResponse, checkAndHandleDisclaimer, sendDisclaimer } from './disclaimer.mjs';
 import { registerDiscordUser } from '../db/dynamo.mjs';
 import { startTutorial, handleTutorial } from './tutorial.mjs';
+import { enable2FA, check2FAStatus } from './2fa.mjs';  // Add this import
+import { 
+    ButtonStyle, 
+    ActionRowBuilder, 
+    ButtonBuilder,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle
+} from 'discord.js';  // Add additional imports
 
 // Token map caching
 let tokenMap = new Map();
@@ -121,11 +131,126 @@ export async function handleButtonInteraction(interaction) {
                 await sendDisclaimer(interaction.channel);
                 break;
             case 'setup_2fa':
-                await interaction.reply({
-                    content: 'Use the `/enable2fa` command to set up two-factor authentication.',
-                    ephemeral: true
-                });
+                try {
+                    const has2FA = await check2FAStatus(interaction.user.id);
+                    
+                    if (has2FA) {
+                        const embed = new EmbedBuilder()
+                            .setTitle('🔒 2FA Security Status')
+                            .setDescription('Two-Factor Authentication is already active on your account.')
+                            .setColor(0x5865F2)
+                            .addFields(
+                                {
+                                    name: '📝 Important Note',
+                                    value: 'For security reasons, 2FA cannot be disabled directly through the bot.',
+                                    inline: false
+                                },
+                                {
+                                    name: '🔐 Need to Reset?',
+                                    value: 'To remove or reset 2FA:\n• Contact our support team\n• Prepare identity verification\n• Explain your situation',
+                                    inline: false
+                                }
+                            )
+                            .setFooter({ 
+                                text: 'Security First | Your Protection Matters',
+                                iconURL: 'https://i.imgur.com/AfFp7pu.png'
+                            });
+
+                        const row = new ActionRowBuilder()
+                            .addComponents(
+                                new ButtonBuilder()
+                                    .setCustomId('quickstart_wallet_security')
+                                    .setLabel('Continue to Next Step')
+                                    .setStyle(ButtonStyle.Primary)
+                                    .setEmoji('➡️')
+                            );
+
+                        await interaction.reply({
+                            embeds: [embed],
+                            components: [row],
+                            ephemeral: true
+                        });
+                        return;
+                    }
+
+                    // Existing 2FA setup code...
+                    const setupResult = await enable2FA(
+                        interaction.user.id,
+                        interaction.user.username
+                    );
+
+                    // Ensure we have QR code data
+                    if (!setupResult || !setupResult.qrCodeUrl) {
+                        throw new Error('Failed to generate 2FA setup data');
+                    }
+
+                    // Convert QR code to attachment
+                    const qrBuffer = Buffer.from(setupResult.qrCodeUrl.split(',')[1], 'base64');
+                    const attachment = { 
+                        attachment: qrBuffer,
+                        name: '2fa-qr.png' 
+                    };
+
+                    const row = new ActionRowBuilder()
+                        .addComponents(
+                            new ButtonBuilder()
+                                .setCustomId('verify_2fa_setup')
+                                .setLabel('Verify 2FA')
+                                .setStyle(ButtonStyle.Success)
+                                .setEmoji('✅'),
+                            new ButtonBuilder()
+                                .setCustomId('back_to_quick_start')
+                                .setLabel('Back')
+                                .setStyle(ButtonStyle.Secondary)
+                                .setEmoji('↩️')
+                        );
+
+                    await interaction.reply({
+                        content: [
+                            '🔒 **2FA Setup Started**',
+                            '',
+                            '1️⃣ Scan the QR code with your authenticator app (Google Authenticator, Authy, etc.)',
+                            '2️⃣ Save this backup code in a secure place: `' + setupResult.secret + '`',
+                            '3️⃣ Click "Verify 2FA" and enter the code from your app',
+                            '',
+                            '⚠️ **DO NOT SHARE** your backup code with anyone!'
+                        ].join('\n'),
+                        files: [attachment],
+                        components: [row],
+                        ephemeral: true
+                    });
+                } catch (error) {
+                    console.error('Error in 2FA setup:', error);
+                    await interaction.reply({
+                        content: '❌ Error setting up 2FA. Please try again.',
+                        ephemeral: true
+                    });
+                }
                 break;
+
+            case 'verify_2fa_setup':
+                const modal = new ModalBuilder()
+                    .setCustomId('verify_2fa_modal')
+                    .setTitle('Verify 2FA Setup');
+
+                const codeInput = new TextInputBuilder()
+                    .setCustomId('2fa_code')
+                    .setLabel('Enter the code from your authenticator app')
+                    .setStyle(TextInputStyle.Short)
+                    .setMinLength(6)
+                    .setMaxLength(6)
+                    .setRequired(true);
+
+                const firstActionRow = new ActionRowBuilder().addComponents(codeInput);
+                modal.addComponents(firstActionRow);
+
+                await interaction.showModal(modal);
+                break;
+
+            case 'back_to_quick_start':
+                await sendQuickStartSecurity(interaction, '2fa_setup');
+                break;
+
             case 'show_tutorial':
                 await startTutorial(interaction);
                 break;
@@ -139,6 +264,7 @@ export async function handleButtonInteraction(interaction) {
                 return newMenu;
                 break;
             case 'quick_start':
+                await interaction.deferReply({ ephemeral: true });
                 await sendQuickStartSecurity(interaction, '2fa_setup');
                 break;
             case 'quickstart_wallet_security':
@@ -166,9 +292,11 @@ export async function handleButtonInteraction(interaction) {
         }
     } catch (error) {
         console.error('Button interaction error:', error);
-        await interaction.reply({
-            content: '❌ An error occurred. Please try again.',
-            ephemeral: true
-        }).catch(console.error);
+        if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({
+                content: '❌ An error occurred. Please try again.',
+                ephemeral: true  // Change from flags object to direct ephemeral
+            }).catch(console.error);
+        }
     }
 }
