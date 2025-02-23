@@ -1,17 +1,17 @@
-import { Client, GatewayIntentBits } from 'discord.js';
+import { Client, GatewayIntentBits, REST, Routes } from 'discord.js';
 import { CHANNEL_IDS } from './src/globals/global.mjs';
 import { 
     sendWelcomeMessage, 
     sendErrorMessage, 
     sendSuccessMessage,
     sendMainMenu,
-    sendChainSelection 
+    sendStartupMessage,
+    sendHelpMenu
 } from './src/utils/discordMessages.mjs';
-import dotenv from 'dotenv';
-import { registerDiscordUser } from './src/db/dynamo.mjs';
-import { checkAndHandleDisclaimer, handleDisclaimerResponse } from './src/utils/disclaimer.mjs';
-import { enable2FA, handle2FAVerification, require2FASetup } from './src/utils/2fa.mjs';
+import { handleButtonInteraction } from './src/utils/utils.mjs';
 import { registerWalletHandlers } from './src/actions/wallet.mjs';
+import { handle2FACommands } from './src/utils/2fa.mjs';
+import dotenv from 'dotenv';
 
 dotenv.config();
 
@@ -27,12 +27,51 @@ const client = new Client({
 // Add this variable at the top level to track the last menu message
 let lastMenuMessage = null;
 
+const commands = [
+    {
+        name: 'enable2fa',
+        description: 'Enable Two-Factor Authentication for your account'
+    },
+    {
+        name: 'verify2fa',
+        description: 'Verify your 2FA code',
+        options: [
+            {
+                name: 'code',
+                description: 'Your 2FA code from authenticator app',
+                type: 3, // STRING
+                required: true
+            }
+        ]
+    },
+    {
+        name: 'menu',
+        description: 'Open the main menu'
+    }
+];
+
+const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+
 // Bot ready event
-client.on('ready', () => {
+client.on('ready', async () => {
     console.log(`Logged in as ${client.user.tag}`);
-    const generalChannel = client.channels.cache.get(CHANNEL_IDS.GENERAL);
-    if (generalChannel) {
-        sendSuccessMessage(generalChannel, 'Bot is now online!');
+    
+    try {
+        console.log('Started refreshing application (/) commands.');
+
+        await rest.put(
+            Routes.applicationCommands(client.user.id),
+            { body: commands },
+        );
+
+        console.log('Successfully reloaded application (/) commands.');
+        
+        const generalChannel = client.channels.cache.get(CHANNEL_IDS.GENERAL);
+        if (generalChannel) {
+            sendStartupMessage(generalChannel);
+        }
+    } catch (error) {
+        console.error(error);
     }
 });
 
@@ -46,47 +85,18 @@ client.on('guildMemberAdd', async (member) => {
 
 // Message event handler
 client.on('messageCreate', async (message) => {
-    // Ignore bot messages
     if (message.author.bot) return;
 
     try {
-        // Try to register user but don't fail if it errors
-        try {
-            await registerDiscordUser(
-                message.author.id,
-                message.author.username
-            );
-        } catch (error) {
-            console.warn('Non-critical error registering user:', error);
-        }
-
-        // Command handler
-        if (message.content.startsWith('!')) {
-            const args = message.content.slice(1).trim().split(/ +/);
-            const command = args.shift().toLowerCase();
-
-            try {
-                switch (command) {
-                    case 'ping':
-                        await message.reply('Pong!');
-                        break;
-                    case 'help':
-                        await message.reply('Available commands:\n!menu - Show the main menu\n!ping - Check bot response\n!help - Show this help message');
-                        break;
-                    case 'menu':
-                        console.log(`Menu requested by ${message.author.tag}`);
-                        if (lastMenuMessage) {
-                            await lastMenuMessage.delete().catch(console.error);
-                        }
-                        lastMenuMessage = await sendMainMenu(message.channel);
-                        break;
-                    default:
-                        await message.reply('Unknown command. Use !help for available commands.');
-                }
-            } catch (error) {
-                console.error('Command error:', error);
-                await sendErrorMessage(message.channel, error);
+        // Handle commands
+        if (message.content.toLowerCase() === '!menu' || message.content.toLowerCase() === '.menu') {
+            console.log(`Menu requested by ${message.author.tag}`);
+            if (lastMenuMessage) {
+                await lastMenuMessage.delete().catch(console.error);
             }
+            lastMenuMessage = await sendMainMenu(message.channel);
+            // Delete the command message for cleaner chat
+            await message.delete().catch(console.error);
         }
     } catch (error) {
         console.error('Message handling error:', error);
@@ -99,114 +109,38 @@ client.on('messageCreate', async (message) => {
 // Button interaction handler
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
-
-    // Handle disclaimer responses first
-    if (interaction.customId === 'agree_terms' || interaction.customId === 'disagree_terms') {
-        await handleDisclaimerResponse(interaction);
-        return;
-    }
-
-    try {
-        // Register user on first interaction
-        await registerDiscordUser(
-            interaction.user.id,
-            interaction.user.username
-        );
-
-        // Check disclaimer before processing other buttons
-        const hasAgreed = await checkAndHandleDisclaimer(interaction);
-        if (!hasAgreed) return;
-
-        // Delete the previous menu message if it exists
-        if (lastMenuMessage) {
-            await lastMenuMessage.delete().catch(console.error);
-            lastMenuMessage = null;
-        }
-
-        // Check 2FA requirement before processing protected actions
-        if (interaction.customId.startsWith('protected_')) {
-            const has2FA = await require2FASetup(interaction);
-            if (!has2FA) return;
-        }
-
-        // Handle different button interactions
-        switch (interaction.customId) {
-            case 'chain_selection':
-                console.log('Chain selection menu opened');
-                lastMenuMessage = await sendChainSelection(interaction.channel);
-                await interaction.deferUpdate();
-                break;
-            case 'chain_solana':
-                console.log('Solana chain selected');
-                await interaction.deferReply({ ephemeral: true });
-                await interaction.editReply('Solana chain selected!');
-                break;
-            case 'chain_ethereum':
-                console.log('Ethereum chain selected');
-                await interaction.deferReply({ ephemeral: true });
-                await interaction.editReply('Ethereum chain selected!');
-                break;
-            // Let the wallet handlers handle wallet-related buttons
-            case 'view_wallet':
-            case 'generate_wallet':
-            case 'refresh_wallet':
-            case 'show_private_key':
-            case 'set_withdraw_address':
-            case 'send_sol':
-                return; // Let the wallet handlers handle these
-            default:
-                console.log(`Unhandled button interaction: ${interaction.customId}`);
-                await interaction.reply({
-                    content: 'This feature is not yet implemented.',
-                    flags: { ephemeral: true }
-                });
-        }
-    } catch (error) {
-        console.error('Interaction error:', error);
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({
-                content: '❌ An error occurred. Please try again.',
-                flags: { ephemeral: true }
-            }).catch(console.error);
-        }
-    }
+    await handleButtonInteraction(interaction);
 });
 
-// Add slash command handler for 2FA commands
+// Slash command handler
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isCommand()) return;
 
-    if (interaction.commandName === 'enable2fa') {
-        try {
-            const { qrCodeUrl, embed } = await enable2FA(
-                interaction.user.id,
-                interaction.user.username
-            );
-
-            // Convert QR code to attachment
-            const qrBuffer = Buffer.from(qrCodeUrl.split(',')[1], 'base64');
-            const attachment = { attachment: qrBuffer, name: '2fa-qr.png' };
-
-            await interaction.reply({
-                files: [attachment],
-                embeds: [embed],
-                ephemeral: true
-            });
-        } catch (error) {
-            console.error('Error enabling 2FA:', error);
-            await interaction.reply({
-                content: '❌ Error enabling 2FA. Please try again.',
-                ephemeral: true
-            });
+    try {
+        switch (interaction.commandName) {
+            case 'menu':
+                if (lastMenuMessage) {
+                    await lastMenuMessage.delete().catch(console.error);
+                }
+                await interaction.deferReply();
+                lastMenuMessage = await sendMainMenu(interaction.channel);
+                await interaction.deleteReply();
+                break;
+            case 'enable2fa':
+            case 'verify2fa':
+                await handle2FACommands(interaction);
+                break;
         }
-    }
-
-    if (interaction.commandName === 'verify2fa') {
-        await handle2FAVerification(interaction);
+    } catch (error) {
+        console.error('Slash command error:', error);
+        await interaction.reply({
+            content: '❌ An error occurred. Please try again.',
+            ephemeral: true
+        }).catch(console.error);
     }
 });
 
-// Add wallet handlers registration
+// Register wallet handlers
 registerWalletHandlers(client);
 
 // Error handling

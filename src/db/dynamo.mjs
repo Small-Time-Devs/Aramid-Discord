@@ -398,11 +398,14 @@ export async function registerDiscordUser(userId, username, referredBy = '202145
     const tableName = 'AramidDiscord-Users';
     
     try {
-        // Store all IDs as strings
+        // Ensure all IDs are strings
+        const userIdString = userId.toString();
+        const referredByString = referredBy.toString();
+        
         const userItem = {
-            userID: userId.toString(), // Store as string
+            userID: userIdString,
             username: username || 'Unknown',
-            referredBy: referredBy.toString(), // Store as string
+            referredBy: referredByString,
             isBetaUser: true,
             createdAt: new Date().toISOString()
         };
@@ -410,7 +413,7 @@ export async function registerDiscordUser(userId, username, referredBy = '202145
         // Check if user exists
         const existingUser = await docClient.send(new GetCommand({
             TableName: tableName,
-            Key: { userID: userId.toString() }
+            Key: { userID: userIdString }
         }));
 
         if (!existingUser.Item) {
@@ -418,17 +421,17 @@ export async function registerDiscordUser(userId, username, referredBy = '202145
                 TableName: tableName,
                 Item: userItem
             }));
-            console.log(`New Discord user registered: ${username} (${userId})`);
+            console.log(`New Discord user registered: ${username} (${userIdString})`);
         } else {
             await docClient.send(new UpdateCommand({
                 TableName: tableName,
-                Key: { userID: userId.toString() },
+                Key: { userID: userIdString },
                 UpdateExpression: 'SET username = :username',
                 ExpressionAttributeValues: {
                     ':username': username || 'Unknown'
                 }
             }));
-            console.log(`Updated existing Discord user: ${username} (${userId})`);
+            console.log(`Updated existing Discord user: ${username} (${userIdString})`);
         }
         return true;
     } catch (error) {

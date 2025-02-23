@@ -113,3 +113,62 @@ export async function send2FARequest(channel, userId) {
         }]
     });
 }
+
+export async function handle2FACommands(interaction) {
+    if (!interaction.isCommand()) return;
+
+    try {
+        switch (interaction.commandName) {
+            case 'enable2fa':
+                console.log('Processing enable2fa command...');
+                const setupResult = await enable2FA(
+                    interaction.user.id,
+                    interaction.user.username
+                );
+
+                if (!setupResult) {
+                    await interaction.reply({
+                        content: '❌ Error setting up 2FA. Please try again.',
+                        ephemeral: true
+                    });
+                    return;
+                }
+
+                // Convert QR code to attachment
+                const qrBuffer = Buffer.from(setupResult.qrCodeUrl.split(',')[1], 'base64');
+                const attachment = { 
+                    attachment: qrBuffer,
+                    name: '2fa-qr.png'
+                };
+
+                await interaction.reply({
+                    content: '🔒 Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)',
+                    files: [attachment],
+                    embeds: [setupResult.embed],
+                    ephemeral: true
+                });
+                break;
+
+            case 'verify2fa':
+                const code = interaction.options.getString('code');
+                if (!code) {
+                    await interaction.reply({
+                        content: '❌ Please provide a valid 2FA code.',
+                        ephemeral: true
+                    });
+                    return;
+                }
+                await handle2FAVerification(interaction);
+                break;
+
+            default:
+                return;
+        }
+    } catch (error) {
+        console.error('Error handling 2FA command:', error);
+        await interaction.reply({
+            content: '❌ Error processing 2FA command. Please try again.',
+            ephemeral: true
+        });
+    }
+}

@@ -16,8 +16,9 @@ import {
 
 export async function handleWalletView(interaction) {
     try {
-        // Defer the reply immediately to prevent timeout
-        await interaction.deferReply({ ephemeral: true });
+        if (!interaction.deferred && !interaction.replied) {
+            await interaction.deferReply({ ephemeral: true }).catch(console.error);
+        }
 
         const userId = interaction.user.id;
         const { exists, solPublicKey, xrpPublicKey } = await checkUserWallet(userId);
@@ -36,7 +37,6 @@ export async function handleWalletView(interaction) {
                         .setStyle(ButtonStyle.Primary)
                 );
 
-            // Use editReply instead of reply
             await interaction.editReply({
                 embeds: [embed],
                 components: [row]
@@ -48,76 +48,142 @@ export async function handleWalletView(interaction) {
         const solBalance = await fetchSolBalance(solPublicKey);
         const tokenBalances = await fetchTokenBalances(solPublicKey);
 
-        // Create main wallet embed
+        // Create main wallet embed with improved formatting
         const walletEmbed = new EmbedBuilder()
-            .setTitle('Your Wallet Details')
-            .setColor(0x0099FF)
+            .setTitle('💼 Crypto Portfolio Dashboard')
+            .setDescription('Manage and monitor your crypto assets across multiple chains')
+            .setColor(0x5865F2)
+            .setThumbnail('https://i.imgur.com/AfFp7pu.png')
             .addFields(
                 {
-                    name: 'Solana Wallet',
-                    value: `[${solPublicKey}](https://solscan.io/account/${solPublicKey})\nBalance: ${solBalance.toFixed(4)} SOL`,
+                    name: '🌟 Solana Wallet',
+                    value: [
+                        '```',
+                        `Address: ${solPublicKey}`,
+                        '```',
+                        `Balance: ${solBalance.toFixed(4)} SOL`,
+                        `[View on Solscan](https://solscan.io/account/${solPublicKey})`,
+                    ].join('\n'),
                     inline: false
                 },
                 {
-                    name: 'XRP Wallet',
-                    value: `[${xrpPublicKey}](https://xrpscan.com/account/${xrpPublicKey})`,
+                    name: '💫 XRP Wallet',
+                    value: [
+                        '```',
+                        `Address: ${xrpPublicKey}`,
+                        '```',
+                        'Balance: 0.00 XRP',
+                        `[View on XRPSCAN](https://xrpscan.com/account/${xrpPublicKey})`,
+                    ].join('\n'),
                     inline: false
                 }
-            );
+            )
+            .setFooter({
+                text: `Last Updated: ${new Date().toLocaleString()}`,
+                iconURL: 'https://i.imgur.com/AfFp7pu.png'
+            });
 
-        // Create token balances embed if there are any
+        // Create token balances embed with improved formatting
         let tokenEmbed;
         if (tokenBalances.length > 0) {
             tokenEmbed = new EmbedBuilder()
-                .setTitle('Token Balances')
-                .setColor(0x0099FF);
+                .setTitle('🪙 Token Holdings')
+                .setDescription('Your token portfolio across different chains')
+                .setColor(0x5865F2);
 
-            tokenBalances.forEach(token => {
-                tokenEmbed.addFields({
-                    name: token.name || 'Unknown Token',
-                    value: `Amount: ${token.amount.toFixed(token.decimals)}\nMint: ${token.mint}`,
-                    inline: true
+            // Group tokens in sets of 3 for better presentation
+            for (let i = 0; i < tokenBalances.length; i += 3) {
+                const tokenGroup = tokenBalances.slice(i, i + 3);
+                tokenGroup.forEach(token => {
+                    tokenEmbed.addFields({
+                        name: `${token.name || 'Unknown Token'}`,
+                        value: [
+                            '```',
+                            `Balance: ${token.amount.toFixed(token.decimals)}`,
+                            `Mint: ${token.mint.slice(0, 8)}...${token.mint.slice(-8)}`,
+                            '```',
+                            `[View Token](https://solscan.io/token/${token.mint})`,
+                        ].join('\n'),
+                        inline: true
+                    });
                 });
-            });
+                // Add empty field if needed to maintain 3-column layout
+                if (tokenGroup.length < 3) {
+                    for (let j = tokenGroup.length; j < 3; j++) {
+                        tokenEmbed.addFields({ name: '\u200b', value: '\u200b', inline: true });
+                    }
+                }
+            }
         }
 
-        // Create action buttons
+        // Create action buttons with improved styling
         const row1 = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
-                    .setCustomId('show_private_key')
-                    .setLabel('Show Private Key')
-                    .setStyle(ButtonStyle.Danger),
+                    .setCustomId(`copy_sol_${solPublicKey}`)
+                    .setLabel('Copy SOL Address')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('📋'),
                 new ButtonBuilder()
-                    .setCustomId('set_withdraw_address')
-                    .setLabel('Set Withdraw Address')
-                    .setStyle(ButtonStyle.Primary)
+                    .setCustomId(`copy_xrp_${xrpPublicKey}`)
+                    .setLabel('Copy XRP Address')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('📋'),
+                new ButtonBuilder()
+                    .setCustomId('refresh_wallet')
+                    .setLabel('Refresh')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('🔄')
             );
 
         const row2 = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
-                    .setCustomId('send_sol')
-                    .setLabel('Send SOL')
-                    .setStyle(ButtonStyle.Success),
+                    .setCustomId('send_tokens')
+                    .setLabel('Send')
+                    .setStyle(ButtonStyle.Primary)
+                    .setEmoji('📤'),
                 new ButtonBuilder()
-                    .setCustomId('refresh_wallet')
-                    .setLabel('Refresh')
+                    .setCustomId('receive_tokens')
+                    .setLabel('Receive')
+                    .setStyle(ButtonStyle.Primary)
+                    .setEmoji('📥'),
+                new ButtonBuilder()
+                    .setCustomId('wallet_settings')
+                    .setLabel('Settings')
                     .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('⚙️')
             );
 
-        // Use editReply instead of reply
-        await interaction.editReply({
+        const row3 = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('back_to_menu')
+                    .setLabel('Back to Menu')
+                    .setStyle(ButtonStyle.Success)
+                    .setEmoji('↩️')
+            );
+
+        // Use editReply if deferred, or reply if not
+        const replyFunction = interaction.deferred ? 'editReply' : 'reply';
+        await interaction[replyFunction]({
             embeds: tokenEmbed ? [walletEmbed, tokenEmbed] : [walletEmbed],
-            components: [row1, row2]
+            components: [row1, row2, row3]
+        }).catch(async (error) => {
+            console.error('Error replying to interaction:', error);
+            // Fallback response
+            await interaction.followUp({
+                content: '❌ Something went wrong. Please try again.',
+                ephemeral: true
+            }).catch(console.error);
         });
 
     } catch (error) {
         console.error('Error in handleWalletView:', error);
-        // Use editReply for error handling too
-        await interaction.editReply({
+        const replyFunction = interaction.deferred ? 'editReply' : 'reply';
+        await interaction[replyFunction]({
             content: '❌ Error fetching wallet details. Please try again.',
-            components: []
+            ephemeral: true
         }).catch(console.error);
     }
 }
@@ -163,6 +229,24 @@ export function registerWalletHandlers(client) {
         if (!interaction.isButton()) return;
 
         try {
+            if (interaction.customId.startsWith('copy_sol_')) {
+                const address = interaction.customId.replace('copy_sol_', '');
+                await interaction.reply({
+                    content: `✅ Solana address copied: \`${address}\``,
+                    ephemeral: true
+                });
+                return;
+            }
+
+            if (interaction.customId.startsWith('copy_xrp_')) {
+                const address = interaction.customId.replace('copy_xrp_', '');
+                await interaction.reply({
+                    content: `✅ XRP address copied: \`${address}\``,
+                    ephemeral: true
+                });
+                return;
+            }
+
             switch (interaction.customId) {
                 case 'view_wallet':
                     await handleWalletView(interaction);
@@ -172,6 +256,15 @@ export function registerWalletHandlers(client) {
                     break;
                 case 'refresh_wallet':
                     await handleWalletView(interaction);
+                    break;
+                case 'back_to_menu':
+                    // Delete current wallet view
+                    if (interaction.message) {
+                        await interaction.message.delete().catch(console.error);
+                    }
+                    // Send new main menu
+                    await sendMainMenu(interaction.channel);
+                    await interaction.deferUpdate().catch(console.error);
                     break;
                 // ... other cases ...
             }

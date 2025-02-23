@@ -93,7 +93,7 @@ By clicking "I Agree", you acknowledge and accept these terms.`)
             await interaction.reply({
                 embeds: [embed],
                 components: [row],
-                flags: { ephemeral: true } // Updated to use flags instead of ephemeral
+                ephemeral: true  // Changed from flags: { ephemeral: true }
             });
             return false;
         }
@@ -113,13 +113,13 @@ export async function handleDisclaimerResponse(interaction) {
                 content: '✅ Thank you for agreeing to the terms. You can now use the bot.',
                 embeds: [],
                 components: [],
-                flags: { ephemeral: true } // Updated to use flags
+                ephemeral: true  // Changed from flags: { ephemeral: true }
             });
         } catch (error) {
             console.error('Error storing agreement:', error);
             await interaction.reply({
                 content: '❌ Error processing your agreement. Please try again.',
-                flags: { ephemeral: true } // Updated to use flags
+                ephemeral: true  // Changed from flags: { ephemeral: true }
             });
         }
     } else {
@@ -127,7 +127,7 @@ export async function handleDisclaimerResponse(interaction) {
             content: '❌ You must agree to the terms to use this bot.',
             embeds: [],
             components: [],
-            flags: { ephemeral: true } // Updated to use flags
+            ephemeral: true  // Changed from flags: { ephemeral: true }
         });
     }
 }
