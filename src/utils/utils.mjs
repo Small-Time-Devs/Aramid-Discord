@@ -16,7 +16,8 @@ import {
     ButtonBuilder,
     ModalBuilder,
     TextInputBuilder,
-    TextInputStyle
+    TextInputStyle,
+    EmbedBuilder  // Add EmbedBuilder to imports
 } from 'discord.js';  // Add additional imports
 
 // Token map caching
@@ -139,7 +140,7 @@ export async function handleButtonInteraction(interaction) {
                             .setTitle('🔒 2FA Security Status')
                             .setDescription('Two-Factor Authentication is already active on your account.')
                             .setColor(0x5865F2)
-                            .addFields(
+                            .addFields([
                                 {
                                     name: '📝 Important Note',
                                     value: 'For security reasons, 2FA cannot be disabled directly through the bot.',
@@ -150,7 +151,7 @@ export async function handleButtonInteraction(interaction) {
                                     value: 'To remove or reset 2FA:\n• Contact our support team\n• Prepare identity verification\n• Explain your situation',
                                     inline: false
                                 }
-                            )
+                            ])
                             .setFooter({ 
                                 text: 'Security First | Your Protection Matters',
                                 iconURL: 'https://i.imgur.com/AfFp7pu.png'
@@ -168,7 +169,7 @@ export async function handleButtonInteraction(interaction) {
                         await interaction.reply({
                             embeds: [embed],
                             components: [row],
-                            ephemeral: true
+                            ephemeral: true // Using simple ephemeral flag
                         });
                         return;
                     }
@@ -217,13 +218,13 @@ export async function handleButtonInteraction(interaction) {
                         ].join('\n'),
                         files: [attachment],
                         components: [row],
-                        ephemeral: true
+                        ephemeral: true // Using simple ephemeral flag
                     });
                 } catch (error) {
                     console.error('Error in 2FA setup:', error);
                     await interaction.reply({
                         content: '❌ Error setting up 2FA. Please try again.',
-                        ephemeral: true
+                        ephemeral: true // Using simple ephemeral flag
                     });
                 }
                 break;
@@ -268,13 +269,32 @@ export async function handleButtonInteraction(interaction) {
                 await sendQuickStartSecurity(interaction, '2fa_setup');
                 break;
             case 'quickstart_wallet_security':
-                await sendQuickStartSecurity(interaction, 'wallet_security');
-                break;
             case 'quickstart_protected_tx':
-                await sendQuickStartSecurity(interaction, 'protected_tx');
-                break;
             case 'quickstart_complete':
-                await sendQuickStartSecurity(interaction, 'complete');
+                if (!interaction.deferred && !interaction.replied) {
+                    await interaction.deferReply({ ephemeral: true });
+                }
+                await sendQuickStartSecurity(interaction, interaction.customId.replace('quickstart_', ''));
+                break;
+            case 'back_to_menu':
+            case 'open_menu':
+            case 'open_main_menu':
+                try {
+                    const newMenu = await sendMainMenu(interaction.channel);
+                    if (interaction.message) {
+                        try {
+                            await interaction.message.delete();
+                        } catch (error) {
+                            console.log('Message already deleted or not found');
+                        }
+                    }
+                    await interaction.deferUpdate().catch(console.error);
+                    return newMenu;
+                } catch (error) {
+                    console.error('Menu handling error:', error);
+                    await sendMainMenu(interaction.channel);
+                    await interaction.deferUpdate().catch(console.error);
+                }
                 break;
             case 'tutorial_security_1':
             case 'tutorial_security_2':
@@ -295,7 +315,7 @@ export async function handleButtonInteraction(interaction) {
         if (!interaction.replied && !interaction.deferred) {
             await interaction.reply({
                 content: '❌ An error occurred. Please try again.',
-                ephemeral: true  // Change from flags object to direct ephemeral
+                ephemeral: true // Using simple ephemeral flag
             }).catch(console.error);
         }
     }

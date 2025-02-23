@@ -571,18 +571,29 @@ export const sendQuickStartSecurity = async (interaction, step = '2fa_setup') =>
     }
 
     try {
-        // Update the interaction with the quick start content
-        await interaction.editReply({
-            embeds: [embed],
-            components: rows
-        });
+        if (!interaction.deferred && !interaction.replied) {
+            await interaction.deferReply({ ephemeral: true });
+        }
+
+        if (interaction.deferred) {
+            await interaction.editReply({
+                embeds: [embed],
+                components: rows
+            });
+        } else {
+            await interaction.reply({
+                embeds: [embed],
+                components: rows,
+                ephemeral: true
+            });
+        }
     } catch (error) {
         console.error('Error in sendQuickStartSecurity:', error);
-        // If edit fails, try a new reply
-        await interaction.reply({
+        // If all else fails, try to send a followUp
+        await interaction.followUp({
             embeds: [embed],
             components: rows,
             ephemeral: true
-        });
+        }).catch(console.error);
     }
 };

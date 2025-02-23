@@ -145,7 +145,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// Add modal submit handler
+// Update modal submit handler
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isModalSubmit()) return;
 
@@ -157,7 +157,7 @@ client.on('interactionCreate', async (interaction) => {
             if (isValid) {
                 await interaction.reply({
                     content: '✅ 2FA setup completed successfully!',
-                    ephemeral: true
+                    ephemeral: true // Using simple ephemeral flag
                 });
 
                 // Wait a moment before showing the next step
@@ -167,7 +167,7 @@ client.on('interactionCreate', async (interaction) => {
             } else {
                 await interaction.reply({
                     content: '❌ Invalid 2FA code. Please try again.',
-                    ephemeral: true
+                    ephemeral: true // Using simple ephemeral flag
                 });
             }
         }
@@ -175,8 +175,8 @@ client.on('interactionCreate', async (interaction) => {
         console.error('Modal submit error:', error);
         await interaction.reply({
             content: '❌ An error occurred. Please try again.',
-            ephemeral: true
-        }).catch(console.error);
+            ephemeral: true // Using simple ephemeral flag
+        });
     }
 });
 
