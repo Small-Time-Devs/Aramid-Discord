@@ -127,17 +127,21 @@ client.on('messageCreate', async (message) => {
 
 // Button interaction handler
 client.on('interactionCreate', async (interaction) => {
-    if (!interaction.isButton()) return;
-    
-    try {
-        await handleApplicationInteractions(interaction);
-        await handleButtonInteraction(interaction);
-    } catch (error) {
-        console.error('Interaction error:', error);
-        await interaction.reply({
-            content: '❌ An error occurred. Please try again.',
-            ephemeral: true
-        }).catch(console.error);
+    if (interaction.isButton()) {
+        try {
+            await handleApplicationInteractions(interaction);
+        } catch (error) {
+            console.error('Button interaction error:', error);
+        }
+        return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId === 'token_address_modal') {
+        try {
+            await handleTokenAddressSubmit(interaction);
+        } catch (error) {
+            console.error('Modal submit error:', error);
+        }
     }
 });
 

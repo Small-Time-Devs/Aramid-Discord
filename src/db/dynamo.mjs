@@ -440,3 +440,45 @@ export async function registerDiscordUser(userId, username, referredBy = '202145
         return false;
     }
 }
+
+export async function getTradeSettings(userId) {
+    try {
+        const result = await docClient.send(new GetCommand({
+            TableName: 'AramidDiscord-Settings',
+            Key: { userID: userId.toString() }
+        }));
+        
+        return result.Item;
+    } catch (error) {
+        console.error('Error fetching trade settings:', error);
+        return null;
+    }
+}
+
+export async function saveTradeSettings(userId, newSettings) {
+    try {
+        // Get existing settings first
+        const existingSettings = await getTradeSettings(userId) || {};
+        
+        // Merge existing with new settings
+        const settings = {
+            ...existingSettings,
+            ...newSettings
+        };
+
+        await docClient.send(new PutCommand({
+            TableName: 'AramidDiscord-Settings',
+            Item: {
+                userID: userId.toString(),
+                ...settings,
+                updatedAt: new Date().toISOString()
+            }
+        }));
+
+        console.log(`Trade settings saved for user ${userId}:`, settings);
+        return true;
+    } catch (error) {
+        console.error('Error saving trade settings:', error);
+        throw error;
+    }
+}

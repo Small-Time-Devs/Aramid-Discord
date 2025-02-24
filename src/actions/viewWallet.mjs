@@ -8,6 +8,7 @@ import { checkUserWallet } from '../db/dynamo.mjs';
 import { fetchSolBalance, fetchTokenBalances } from '../../applications/chains/solana/spotTrading/functions/utils.mjs';
 import { initializeXrpClient, fetchXrpBalance } from '../../applications/chains/xrp/spotTrading/functions/utils.mjs';
 import { globalStaticConfig } from '../../src/globals/global.mjs';
+import { sendMainMenu } from '../utils/discordMessages.mjs'; // Add this import
 
 export async function handleWalletView(interaction) {
     try {
@@ -220,22 +221,19 @@ export function registerWalletHandlers(client) {
                     break;
                 case 'back_to_menu':
                     try {
-                        // Try to delete the message if it exists
+                        await interaction.deferUpdate().catch(console.error);
                         if (interaction.message) {
                             await interaction.message.delete().catch(() => {
                                 console.log('Message already deleted or not found');
                             });
                         }
-                        
-                        // Send new menu and defer the interaction
-                        const newMenu = await sendMainMenu(interaction.channel);
-                        await interaction.deferUpdate().catch(console.error);
-                        return newMenu;
+                        await sendMainMenu(interaction.channel);
                     } catch (error) {
                         console.error('Error handling back to menu:', error);
-                        // If something goes wrong, just try to show the menu
-                        await sendMainMenu(interaction.channel);
-                        await interaction.deferUpdate().catch(console.error);
+                        // Only try to send menu if we haven't already responded
+                        if (!interaction.replied && !interaction.deferred) {
+                            await sendMainMenu(interaction.channel);
+                        }
                     }
                     break;
                 // ... other cases ...
