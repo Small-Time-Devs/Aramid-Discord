@@ -142,36 +142,75 @@ export async function handleApplicationInteractions(interaction) {
 
                 case 'set_quick_sell':
                     const quickSellModal = new ModalBuilder()
-                        .setCustomId('quick_sell_modal') // Consistent ID
-                        .setTitle('Quick Sell Settings')
-                        .addComponents(
-                            new ActionRowBuilder().addComponents(
-                                new TextInputBuilder()
-                                    .setCustomId('min_sell')
-                                    .setLabel('Minimum Sell Amount (SOL)')
-                                    .setStyle(TextInputStyle.Short)
-                                    .setPlaceholder('0.1')
-                                    .setRequired(true)
-                            ),
-                            new ActionRowBuilder().addComponents(
-                                new TextInputBuilder()
-                                    .setCustomId('med_sell')
-                                    .setLabel('Medium Sell Amount (SOL)')
-                                    .setStyle(TextInputStyle.Short)
-                                    .setPlaceholder('0.5')
-                                    .setRequired(true)
-                            ),
-                            new ActionRowBuilder().addComponents(
-                                new TextInputBuilder()
-                                    .setCustomId('large_sell')
-                                    .setLabel('Large Sell Amount (SOL)')
-                                    .setStyle(TextInputStyle.Short)
-                                    .setPlaceholder('1.0')
-                                    .setRequired(true)
-                            )
-                        );
-                    console.log('Showing quick sell modal');
+                        .setCustomId('quick_sell_modal')
+                        .setTitle('Set Quick Sell Amounts');
+
+                    // Add components to modal
+                    const minSellInput = new TextInputBuilder()
+                        .setCustomId('min_sell')
+                        .setLabel('Minimum Sell Amount (Tokens)')
+                        .setStyle(TextInputStyle.Short)
+                        .setPlaceholder('100')
+                        .setRequired(true);
+
+                    const medSellInput = new TextInputBuilder()
+                        .setCustomId('med_sell')
+                        .setLabel('Medium Sell Amount (Tokens)')
+                        .setStyle(TextInputStyle.Short)
+                        .setPlaceholder('500')
+                        .setRequired(true);
+
+                    const largeSellInput = new TextInputBuilder()
+                        .setCustomId('large_sell')
+                        .setLabel('Large Sell Amount (Tokens)')
+                        .setStyle(TextInputStyle.Short)
+                        .setPlaceholder('1000')
+                        .setRequired(true);
+
+                    quickSellModal.addComponents(
+                        new ActionRowBuilder().addComponents(minSellInput),
+                        new ActionRowBuilder().addComponents(medSellInput),
+                        new ActionRowBuilder().addComponents(largeSellInput)
+                    );
+
+                    // Show the modal and wait for submission
                     await interaction.showModal(quickSellModal);
+
+                    try {
+                        const modalSubmitInteraction = await interaction.awaitModalSubmit({
+                            filter: (i) => i.customId === 'quick_sell_modal',
+                            time: 60000
+                        });
+
+                        // Get values from modal
+                        const minSell = parseFloat(modalSubmitInteraction.fields.getTextInputValue('min_sell'));
+                        const medSell = parseFloat(modalSubmitInteraction.fields.getTextInputValue('med_sell'));
+                        const largeSell = parseFloat(modalSubmitInteraction.fields.getTextInputValue('large_sell'));
+
+                        // Save to database
+                        await saveTradeSettings(interaction.user.id, {
+                            minQuickSell: minSell,
+                            mediumQuickSell: medSell,
+                            largeQuickSell: largeSell
+                        });
+
+                        // Send confirmation
+                        await modalSubmitInteraction.reply({
+                            content: `✅ Quick sell settings saved:\n• Min: ${minSell} tokens\n• Medium: ${medSell} tokens\n• Large: ${largeSell} tokens`,
+                            ephemeral: true
+                        });
+
+                    } catch (error) {
+                        console.error('Modal submission error:', error);
+                        if (error.code === 'INTERACTION_COLLECTOR_ERROR') {
+                            console.log('Modal timed out');
+                            return;
+                        }
+                        await interaction.followUp({
+                            content: '❌ Failed to save settings. Please try again.',
+                            ephemeral: true
+                        });
+                    }
                     break;
             }
         }
