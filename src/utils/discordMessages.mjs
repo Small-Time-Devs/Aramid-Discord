@@ -400,7 +400,171 @@ export const sendStartupMessage = async (channel) => {
 };
 
 // Update sendMainMenu to match sendStartupMessage
-export const sendMainMenu = sendStartupMessage;
+export const sendMainMenu = async (channel) => {
+    return await channel.send({
+        embeds: [{
+            title: '🤖 Crypto Research Assistant',
+            description: 'Your advanced cryptocurrency research and management companion',
+            fields: [
+                {
+                    name: '🔐 Security Features',
+                    value: '• Two-Factor Authentication (2FA)\n• Secure wallet management\n• Protected transactions',
+                    inline: true
+                },
+                {
+                    name: '💰 Wallet Features',
+                    value: '• Multi-chain support\n• Balance tracking\n• Transaction history\n• Secure transfers',
+                    inline: true
+                },
+                {
+                    name: '📊 Research Tools',
+                    value: '• Token analysis\n• Market statistics\n• DeFi insights\n• Price tracking',
+                    inline: true
+                },
+                {
+                    name: '⚡ Quick Commands',
+                    value: '`!menu` - Show this menu\n`!help` - Show detailed help\n`!ping` - Check bot status',
+                    inline: false
+                },
+                {
+                    name: '🔰 Getting Started',
+                    value: 'New users should start with the Quick Start guide or Tutorial for a complete walkthrough.',
+                    inline: false
+                }
+            ],
+            color: 0x5865F2,
+            thumbnail: {
+                url: 'https://i.imgur.com/AfFp7pu.png'
+            },
+            footer: {
+                text: '24/7 Crypto Assistant | Version 1.0',
+                icon_url: 'https://i.imgur.com/AfFp7pu.png'
+            },
+            timestamp: new Date()
+        }],
+        components: [
+            new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('quick_start')
+                        .setLabel('Quick Start')
+                        .setStyle(ButtonStyle.Primary)
+                        .setEmoji('🚀'),
+                    new ButtonBuilder()
+                        .setCustomId('applications')
+                        .setLabel('Applications')
+                        .setStyle(ButtonStyle.Primary)
+                        .setEmoji('🔧'),
+                    new ButtonBuilder()
+                        .setCustomId('view_wallet')
+                        .setLabel('View Wallet')
+                        .setStyle(ButtonStyle.Primary)
+                        .setEmoji('💼')
+                ),
+            new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('show_tutorial')
+                        .setLabel('Tutorial')
+                        .setStyle(ButtonStyle.Secondary)
+                        .setEmoji('📚'),
+                    new ButtonBuilder()
+                        .setCustomId('settings')
+                        .setLabel('Settings')
+                        .setStyle(ButtonStyle.Secondary)
+                        .setEmoji('⚙️'),
+                    new ButtonBuilder()
+                        .setCustomId('help')
+                        .setLabel('Help')
+                        .setStyle(ButtonStyle.Secondary)
+                        .setEmoji('❓')
+                )
+        ]
+    });
+};
+
+export const sendApplicationMenu = async (interaction) => {
+    const embed = new EmbedBuilder()
+        .setTitle('🔧 Applications')
+        .setDescription('Choose which application you want to use:')
+        .addFields(
+            { 
+                name: '📈 Spot Trading', 
+                value: 'Trade tokens directly on DEX platforms' 
+            },
+            { 
+                name: '🤖 Market Maker', 
+                value: 'Provide liquidity and earn fees' 
+            }
+        )
+        .setColor(0x0099FF);
+
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId('spot_trading')
+                .setLabel('Spot Trading')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('📈'),
+            new ButtonBuilder()
+                .setCustomId('market_maker')
+                .setLabel('Market Maker')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('🤖'),
+            new ButtonBuilder()
+                .setCustomId('back_to_menu')
+                .setLabel('Back')
+                .setStyle(ButtonStyle.Secondary)
+                .setEmoji('↩️')
+        );
+
+    await interaction.reply({
+        embeds: [embed],
+        components: [row],
+        ephemeral: true
+    });
+};
+
+export const sendChainSelectionForApp = async (interaction, appType) => {
+    const embed = new EmbedBuilder()
+        .setTitle(`Select Chain for ${appType === 'spot' ? 'Spot Trading' : 'Market Making'}`)
+        .setDescription('Choose which blockchain you want to use:')
+        .addFields(
+            { 
+                name: '💫 Solana', 
+                value: 'Fast transactions, low fees' 
+            },
+            { 
+                name: '💧 XRP', 
+                value: 'Quick settlement, cross-border' 
+            }
+        )
+        .setColor(0x0099FF);
+
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId(`${appType}_solana`)
+                .setLabel('Solana')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('💫'),
+            new ButtonBuilder()
+                .setCustomId(`${appType}_xrp`)
+                .setLabel('XRP')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('💧'),
+            new ButtonBuilder()
+                .setCustomId('back_to_applications')
+                .setLabel('Back')
+                .setStyle(ButtonStyle.Secondary)
+                .setEmoji('↩️')
+        );
+
+    await interaction.update({
+        embeds: [embed],
+        components: [row]
+    });
+};
 
 export const sendHelpMenu = async (interaction) => {
     await interaction.reply({

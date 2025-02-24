@@ -1,28 +1,22 @@
 import { 
-    EmbedBuilder, 
     ActionRowBuilder, 
     ButtonBuilder, 
-    ButtonStyle 
+    ButtonStyle, 
+    EmbedBuilder 
 } from 'discord.js';
-import { 
-    checkUserWallet,
-    generateSolanaWallet,
-    generateXrpWallet 
-} from '../db/dynamo.mjs';
-import { 
-    fetchSolBalance,
-    fetchTokenBalances 
-} from '../../applications/spotTrading/src/chains/solana/functions/utils.mjs';
-import { sendMainMenu } from '../utils/discordMessages.mjs';
+import { checkUserWallet } from '../db/dynamo.mjs';
+import { fetchSolBalance, fetchTokenBalances } from '../../applications/chains/solana/spotTrading/functions/utils.mjs';
+import { initializeXrpClient, fetchXrpBalance } from '../../applications/chains/xrp/spotTrading/functions/utils.mjs';
+import { globalStaticConfig } from '../../src/globals/global.mjs';
 
 export async function handleWalletView(interaction) {
     try {
         if (!interaction.deferred && !interaction.replied) {
-            await interaction.deferReply({ ephemeral: true }).catch(console.error);
+            await interaction.deferReply({ ephemeral: true });
         }
 
         const userId = interaction.user.id;
-        const { exists, solPublicKey, xrpPublicKey } = await checkUserWallet(userId);
+        const { exists, solPublicKey, xrpPublicKey, xrpPrivateKey } = await checkUserWallet(userId);
 
         if (!exists) {
             const embed = new EmbedBuilder()
@@ -45,100 +39,76 @@ export async function handleWalletView(interaction) {
             return;
         }
 
-        // Fetch balances
+        // Fetch balances for both chains
         const solBalance = await fetchSolBalance(solPublicKey);
         const tokenBalances = await fetchTokenBalances(solPublicKey);
+        
+        // Initialize XRP client and fetch balance
+        let xrpBalance = 0;
+        try {
+            const client = await initializeXrpClient(globalStaticConfig.rpcNodeXrp);
+            xrpBalance = await fetchXrpBalance({ classicAddress: xrpPublicKey }, client);
+        } catch (xrpError) {
+            console.warn('Error fetching XRP balance:', xrpError);
+            // Continue with zero balance if XRP fetch fails
+        }
 
-        // Create main wallet embed with improved formatting
+        // Create main wallet embed with both balances
         const walletEmbed = new EmbedBuilder()
             .setTitle('💼 Crypto Portfolio Dashboard')
-            .setDescription('Manage and monitor your crypto assets across multiple chains')
+            .setDescription('View and manage your crypto assets across multiple chains')
             .setColor(0x5865F2)
-            .setThumbnail('https://i.imgur.com/AfFp7pu.png')
             .addFields(
                 {
                     name: '🌟 Solana Wallet',
                     value: [
                         '```',
                         `Address: ${solPublicKey}`,
-                        '```',
                         `Balance: ${solBalance.toFixed(4)} SOL`,
+                        '```',
                         `[View on Solscan](https://solscan.io/account/${solPublicKey})`,
                     ].join('\n'),
                     inline: false
                 },
                 {
-                    name: '💫 XRP Wallet',
+                    name: '💧 XRP Wallet',
                     value: [
                         '```',
                         `Address: ${xrpPublicKey}`,
+                        `Balance: ${xrpBalance.toFixed(4)} XRP`,
                         '```',
-                        'Balance: 0.00 XRP',
                         `[View on XRPSCAN](https://xrpscan.com/account/${xrpPublicKey})`,
                     ].join('\n'),
                     inline: false
                 }
-            )
-            .setFooter({
-                text: `Last Updated: ${new Date().toLocaleString()}`,
-                iconURL: 'https://i.imgur.com/AfFp7pu.png'
-            });
+            );
 
-        // Create token balances embed with improved formatting
-        let tokenEmbed;
-        if (tokenBalances.length > 0) {
-            tokenEmbed = new EmbedBuilder()
-                .setTitle('🪙 Token Holdings')
-                .setDescription('Your token portfolio across different chains')
-                .setColor(0x5865F2);
+        // Add token balances if any exist
+        if (tokenBalances && tokenBalances.length > 0) {
+            const tokensList = tokenBalances
+                .filter(token => token.amount > 0)
+                .map(token => 
+                    `${token.name}: ${token.amount.toFixed(token.decimals)} (${token.mint})`
+                )
+                .join('\n');
 
-            // Group tokens in sets of 3 for better presentation
-            for (let i = 0; i < tokenBalances.length; i += 3) {
-                const tokenGroup = tokenBalances.slice(i, i + 3);
-                tokenGroup.forEach(token => {
-                    tokenEmbed.addFields({
-                        name: `${token.name || 'Unknown Token'}`,
-                        value: [
-                            '```',
-                            `Balance: ${token.amount.toFixed(token.decimals)}`,
-                            `Mint: ${token.mint.slice(0, 8)}...${token.mint.slice(-8)}`,
-                            '```',
-                            `[View Token](https://solscan.io/token/${token.mint})`,
-                        ].join('\n'),
-                        inline: true
-                    });
+            if (tokensList) {
+                walletEmbed.addFields({
+                    name: '🪙 Token Balances',
+                    value: '```\n' + tokensList + '\n```',
+                    inline: false
                 });
-                // Add empty field if needed to maintain 3-column layout
-                if (tokenGroup.length < 3) {
-                    for (let j = tokenGroup.length; j < 3; j++) {
-                        tokenEmbed.addFields({ name: '\u200b', value: '\u200b', inline: true });
-                    }
-                }
             }
         }
 
-        // Create action buttons with improved styling
+        // Add buttons for wallet actions
         const row1 = new ActionRowBuilder()
             .addComponents(
-                new ButtonBuilder()
-                    .setCustomId(`copy_sol_${solPublicKey}`)
-                    .setLabel('Copy SOL Address')
-                    .setStyle(ButtonStyle.Secondary)
-                    .setEmoji('📋'),
-                new ButtonBuilder()
-                    .setCustomId(`copy_xrp_${xrpPublicKey}`)
-                    .setLabel('Copy XRP Address')
-                    .setStyle(ButtonStyle.Secondary)
-                    .setEmoji('📋'),
                 new ButtonBuilder()
                     .setCustomId('refresh_wallet')
                     .setLabel('Refresh')
                     .setStyle(ButtonStyle.Secondary)
-                    .setEmoji('🔄')
-            );
-
-        const row2 = new ActionRowBuilder()
-            .addComponents(
+                    .setEmoji('🔄'),
                 new ButtonBuilder()
                     .setCustomId('send_tokens')
                     .setLabel('Send')
@@ -148,44 +118,34 @@ export async function handleWalletView(interaction) {
                     .setCustomId('receive_tokens')
                     .setLabel('Receive')
                     .setStyle(ButtonStyle.Primary)
-                    .setEmoji('📥'),
+                    .setEmoji('📥')
+            );
+
+        const row2 = new ActionRowBuilder()
+            .addComponents(
                 new ButtonBuilder()
                     .setCustomId('wallet_settings')
                     .setLabel('Settings')
                     .setStyle(ButtonStyle.Secondary)
-                    .setEmoji('⚙️')
-            );
-
-        const row3 = new ActionRowBuilder()
-            .addComponents(
+                    .setEmoji('⚙️'),
                 new ButtonBuilder()
                     .setCustomId('back_to_menu')
                     .setLabel('Back to Menu')
-                    .setStyle(ButtonStyle.Success)
+                    .setStyle(ButtonStyle.Secondary)
                     .setEmoji('↩️')
             );
 
-        // Use editReply if deferred, or reply if not
-        const replyFunction = interaction.deferred ? 'editReply' : 'reply';
-        await interaction[replyFunction]({
-            embeds: tokenEmbed ? [walletEmbed, tokenEmbed] : [walletEmbed],
-            components: [row1, row2, row3]
-        }).catch(async (error) => {
-            console.error('Error replying to interaction:', error);
-            // Fallback response
-            await interaction.followUp({
-                content: '❌ Something went wrong. Please try again.',
-                ephemeral: true
-            }).catch(console.error);
+        await interaction.editReply({
+            embeds: [walletEmbed],
+            components: [row1, row2]
         });
 
     } catch (error) {
         console.error('Error in handleWalletView:', error);
-        const replyFunction = interaction.deferred ? 'editReply' : 'reply';
-        await interaction[replyFunction]({
+        await interaction.editReply({
             content: '❌ Error fetching wallet details. Please try again.',
             ephemeral: true
-        }).catch(console.error);
+        });
     }
 }
 

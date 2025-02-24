@@ -9,7 +9,7 @@ import {
     sendHelpMenu
 } from './src/utils/discordMessages.mjs';
 import { handleButtonInteraction } from './src/utils/utils.mjs';
-import { registerWalletHandlers } from './src/actions/wallet.mjs';
+import { registerWalletHandlers } from './src/actions/viewWallet.mjs';
 import { handle2FACommands, verify2FACode } from './src/utils/2fa.mjs';
 import dotenv from 'dotenv';
 import { 
@@ -17,6 +17,7 @@ import {
     TextInputBuilder, 
     TextInputStyle 
 } from 'discord.js';  // Add these imports
+import { handleApplicationInteractions } from './src/handlers/applicationHandler.mjs';
 
 dotenv.config();
 
@@ -71,12 +72,25 @@ client.on('ready', async () => {
 
         console.log('Successfully reloaded application (/) commands.');
         
-        const generalChannel = client.channels.cache.get(CHANNEL_IDS.GENERAL);
-        if (generalChannel) {
-            sendStartupMessage(generalChannel);
+        // Find the designated channel for the main menu
+        const mainChannel = client.channels.cache.get(CHANNEL_IDS.GENERAL);
+        if (mainChannel) {
+            // Delete previous messages in the channel (optional)
+            try {
+                const messages = await mainChannel.messages.fetch({ limit: 10 });
+                await mainChannel.bulkDelete(messages);
+            } catch (error) {
+                console.error('Error cleaning channel:', error);
+            }
+
+            // Send the main menu
+            lastMenuMessage = await sendMainMenu(mainChannel);
+            console.log('Main menu displayed in general channel');
+        } else {
+            console.error('Could not find general channel');
         }
     } catch (error) {
-        console.error(error);
+        console.error('Error during startup:', error);
     }
 });
 
@@ -114,7 +128,17 @@ client.on('messageCreate', async (message) => {
 // Button interaction handler
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
-    await handleButtonInteraction(interaction);
+    
+    try {
+        await handleApplicationInteractions(interaction);
+        await handleButtonInteraction(interaction);
+    } catch (error) {
+        console.error('Interaction error:', error);
+        await interaction.reply({
+            content: '❌ An error occurred. Please try again.',
+            ephemeral: true
+        }).catch(console.error);
+    }
 });
 
 // Slash command handler

@@ -2,10 +2,9 @@ import axios from 'axios';
 import dotenv from 'dotenv';
 import { EmbedBuilder } from 'discord.js';
 import xrpl from "xrpl";
-import { globalStaticConfig } from '../../../../../../src/globals/globals.mjs'; 
+import { globalStaticConfig } from '../../../../../src/globals/global.mjs'; 
 
 dotenv.config();
-const logoPath = path.resolve('./images/botLogo.png');
 
 const TOKEN_MAP_URL = 'https://cdn.jsdelivr.net/gh/solana-labs/token-list@main/src/tokens/solana.tokenlist.json';
 let tokenMap = new Map();
