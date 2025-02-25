@@ -454,30 +454,15 @@ async function showSolanaSpotTradingMenu(interaction) {
                 }
             );
 
-        // Add token balances if any exist
-        if (tokenBalances && tokenBalances.length > 0) {
-            const tokensList = tokenBalances
-                .filter(token => token.amount > 0)
-                .map(token => 
-                    `${token.name}: ${token.amount.toFixed(token.decimals)} (${token.mint})`
-                )
-                .join('\n');
+        // Create action rows array for all buttons
+        const rows = [];
 
-            if (tokensList) {
-                embed.addFields({
-                    name: '🪙 Token Holdings',
-                    value: '```\n' + tokensList + '\n```',
-                    inline: false
-                });
-            }
-        }
-
-        // Create action buttons
+        // Add main action buttons first
         const row1 = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
                     .setCustomId('SOLANA_TOKEN_BUY')
-                    .setLabel('Buy Token')
+                    .setLabel('Buy New Token')
                     .setStyle(ButtonStyle.Success)
                     .setEmoji('📈'),
                 new ButtonBuilder()
@@ -491,8 +476,50 @@ async function showSolanaSpotTradingMenu(interaction) {
                     .setStyle(ButtonStyle.Secondary)
                     .setEmoji('🔄')
             );
+        rows.push(row1);
 
-        const row2 = new ActionRowBuilder()
+        // Add token holdings and buy buttons
+        if (tokenBalances && tokenBalances.length > 0) {
+            const tokensField = {
+                name: '🪙 Token Holdings',
+                value: '',
+                inline: false
+            };
+
+            const tokensList = tokenBalances
+                .filter(token => token.amount > 0)
+                .map(token => `${token.name}: ${token.amount.toFixed(token.decimals)}`);
+
+            if (tokensList.length > 0) {
+                tokensField.value = '```\n' + tokensList.join('\n') + '\n```';
+                embed.addFields(tokensField);
+
+                // Create buy buttons for existing tokens
+                const tokensPerRow = 3;
+                for (let i = 0; i < tokenBalances.length; i += tokensPerRow) {
+                    const rowTokens = tokenBalances.slice(i, i + tokensPerRow);
+                    const tokenRow = new ActionRowBuilder();
+
+                    rowTokens.forEach(token => {
+                        if (token.amount > 0) {
+                            tokenRow.addComponents(
+                                new ButtonBuilder()
+                                    .setCustomId(`buy_more_${token.mint}`)
+                                    .setLabel(`Buy ${token.name}`)
+                                    .setStyle(ButtonStyle.Success)
+                            );
+                        }
+                    });
+
+                    if (tokenRow.components.length > 0) {
+                        rows.push(tokenRow);
+                    }
+                }
+            }
+        }
+
+        // Add settings/back buttons as the last row
+        const lastRow = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
                     .setCustomId('trade_settings')
@@ -505,10 +532,11 @@ async function showSolanaSpotTradingMenu(interaction) {
                     .setStyle(ButtonStyle.Secondary)
                     .setEmoji('↩️')
             );
+        rows.push(lastRow);
 
         await interaction.update({
             embeds: [embed],
-            components: [row1, row2]
+            components: rows
         });
 
     } catch (error) {
@@ -733,3 +761,30 @@ async function showQuickSellModal(interaction) {
 
     await interaction.showModal(modal);
 }
+
+// Add handler for buy_more buttons
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isButton()) return;
+
+    if (interaction.customId.startsWith('buy_more_')) {
+        const tokenMint = interaction.customId.replace('buy_more_', '');
+        const userId = interaction.user.id;
+        const { exists, solPublicKey, solPrivateKey } = await checkUserWallet(userId);
+        
+        // Initialize buy config with the selected token
+        solanaBuyTokenConfig[userId] = {
+            userId,
+            outputMint: tokenMint,
+            amount: 0.01,
+            jito: false,
+            solPublicKey,
+            solPrivateKey,
+            slippage: 50,
+            priorityFee: (await getSolanaPriorityFee()).mediumFee,
+            priorityFeeSol: (await getSolanaPriorityFee()).mediumFee / LAMPORTS_PER_SOL,
+        };
+
+        // Show purchase options for the selected token
+        await handleTokenSelection(interaction);
+    }
+});
