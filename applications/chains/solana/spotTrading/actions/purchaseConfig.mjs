@@ -19,7 +19,7 @@ import { showTokenPurchaseConfig } from '../ui/purchaseConfig.mjs';
 import { showTokenBuyOptions } from './tokenSelection.mjs';
 import { showSolanaSpotTradingMenu } from '../ui/dashboard.mjs';
 import axios from 'axios'; // Add this import if not already present
-import { globalURLS } from '../../../../../src/globals/globals.mjs';
+import { globalURLS } from '../../../../../src/globals/global.mjs';
 import { getReferralPublicKey } from '../../../../../src/db/dynamo.mjs';
 
 /**
@@ -396,7 +396,7 @@ export async function handleExecutePurchase(interaction) {
         
         try {
             // Make the actual API call to execute the purchase
-            const response = await axios.post(`${globalURLS.smallTimeDevsRaydiumTradeAPI}/aramidBuy`, {
+            const response = await axios.post(`${globalURLS.smallTimeDevsTradeAPI}/aramidBuy`, {
                 private_key: config.solPrivateKey,
                 public_key: config.solPublicKey,
                 mint: config.outputMint,

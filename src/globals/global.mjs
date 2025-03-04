@@ -23,6 +23,7 @@ export const globalStaticConfig = {
 export const globalURLS = {
     // Main RPC Node
     smallTimeDevsRaydiumTradeAPI: 'https://api.smalltimedevs.com/solana/raydium-api',
+    smallTimeDevsTradeAPI: 'https://api.smalltimedevs.com/solana',
     smallTimeDevsXrpAPI: 'https://api.smalltimedevs.com/xrp/dex-api',
     raydiumMintAPI: 'https://api-v3.raydium.io/pools/info/mint/',
 };
