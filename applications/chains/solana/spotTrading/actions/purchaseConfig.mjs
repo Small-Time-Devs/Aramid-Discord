@@ -18,6 +18,9 @@ import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { showTokenPurchaseConfig } from '../ui/purchaseConfig.mjs';
 import { showTokenBuyOptions } from './tokenSelection.mjs';
 import { showSolanaSpotTradingMenu } from '../ui/dashboard.mjs';
+import axios from 'axios'; // Add this import if not already present
+import { globalURLS } from '../../../../../src/globals/globals.mjs';
+import { getReferralPublicKey } from '../../../../../src/db/dynamo.mjs';
 
 /**
  * Handle set purchase amount button
@@ -388,18 +391,30 @@ export async function handleExecutePurchase(interaction) {
             ephemeral: true
         });
         
-        // Here you would integrate with your actual purchase execution logic
-        // This is a placeholder implementation
+        // Get the referral public key if available
+        const referralPublicKey = await getReferralPublicKey(userId) || '';
+        
         try {
-            // Simulate successful transaction
-            const tokenDetails = await fetchTokenDetails(config.outputMint);
-            const tokenName = tokenDetails?.name || 'Unknown Token';
-            const tokenSymbol = tokenDetails?.symbol || '';
+            // Make the actual API call to execute the purchase
+            const response = await axios.post(`${globalURLS.smallTimeDevsRaydiumTradeAPI}/aramidBuy`, {
+                private_key: config.solPrivateKey,
+                public_key: config.solPublicKey,
+                mint: config.outputMint,
+                amount: config.amount,
+                referralPublicKey: referralPublicKey,
+                priorityFee: config.priorityFee,
+                slippage: config.slippage,
+                useJito: config.jito || false,
+            });
             
-            // Instead of using setTimeout, we could call an API here:
-            // const response = await axios.post('/api/trade', config);
+            console.log('API Response:', response.data);
             
-            setTimeout(async () => {
+            if (response.data.message === 'Transaction confirmed') {
+                // Create success embed with actual transaction data
+                const tokenDetails = await fetchTokenDetails(config.outputMint);
+                const tokenName = tokenDetails?.name || 'Unknown Token';
+                const tokenSymbol = tokenDetails?.symbol || '';
+                
                 const embed = new EmbedBuilder()
                     .setTitle('Transaction Successful')
                     .setColor(0x00FF00)
@@ -415,27 +430,42 @@ export async function handleExecutePurchase(interaction) {
                             inline: true 
                         },
                         { 
+                            name: 'Tokens Purchased', 
+                            value: `${response.data.tokensPurchased || 'Unknown'}`, 
+                            inline: true 
+                        },
+                        { 
                             name: 'Status', 
                             value: 'Completed', 
                             inline: true 
                         },
                         { 
                             name: 'Transaction ID', 
-                            value: 'Simulated TX ID: 12345...', 
+                            value: `[View on Solscan](https://solscan.io/tx/${response.data.txid})`, 
                             inline: false 
                         }
                     );
-                    
+                
                 await interaction.followUp({
                     embeds: [embed],
                     ephemeral: true
                 });
-            }, 2000);
+            } else {
+                throw new Error(response.data.error || 'Unknown error occurred');
+            }
             
         } catch (purchaseError) {
             console.error('Purchase execution error:', purchaseError);
+            
+            let errorMessage = 'Transaction failed';
+            if (purchaseError.response?.data?.error) {
+                errorMessage += `: ${purchaseError.response.data.error}`;
+            } else if (purchaseError.message) {
+                errorMessage += `: ${purchaseError.message}`;
+            }
+            
             await interaction.followUp({
-                content: `❌ Transaction failed: ${purchaseError.message}`,
+                content: `❌ ${errorMessage}`,
                 ephemeral: true
             });
         }
