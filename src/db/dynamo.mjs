@@ -482,3 +482,28 @@ export async function saveTradeSettings(userId, newSettings) {
         throw error;
     }
 }
+
+/**
+ * Get a user's referral public key if available
+ * @param {string} userId - The Discord user ID
+ * @returns {Promise<string|null>} - Returns the referral public key or null if not found
+ */
+export async function getReferralPublicKey(userId) {
+    try {
+        // If you have a specific table for referrals, use that
+        const params = {
+            TableName: process.env.DYNAMODB_USER_TABLE,
+            Key: {
+                userId: userId
+            }
+        };
+        
+        const result = await docClient.get(params).promise();
+        
+        // Return the referral public key if it exists, otherwise null
+        return result?.Item?.referralPublicKey || null;
+    } catch (error) {
+        console.error(`Error getting referral public key for user ${userId}:`, error);
+        return null;
+    }
+}

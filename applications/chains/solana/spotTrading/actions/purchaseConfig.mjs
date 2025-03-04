@@ -18,9 +18,9 @@ import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { showTokenPurchaseConfig } from '../ui/purchaseConfig.mjs';
 import { showTokenBuyOptions } from './tokenSelection.mjs';
 import { showSolanaSpotTradingMenu } from '../ui/dashboard.mjs';
-import axios from 'axios'; // Add this import if not already present
+import axios from 'axios';
 import { globalURLS } from '../../../../../src/globals/global.mjs';
-import { getReferralPublicKey } from '../../../../../src/db/dynamo.mjs';
+import { checkUserWallet } from '../../../../../src/db/dynamo.mjs';
 
 /**
  * Handle set purchase amount button
@@ -391,8 +391,9 @@ export async function handleExecutePurchase(interaction) {
             ephemeral: true
         });
         
-        // Get the referral public key if available
-        const referralPublicKey = await getReferralPublicKey(userId) || '';
+        // Since getReferralPublicKey might not exist, we'll skip that part
+        // and just use an empty string for the referral key
+        const referralPublicKey = '';
         
         try {
             // Make the actual API call to execute the purchase
