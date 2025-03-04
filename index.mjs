@@ -16,8 +16,10 @@ import {
     ModalBuilder, 
     TextInputBuilder, 
     TextInputStyle 
-} from 'discord.js';  // Add these imports
+} from 'discord.js';
 import { handleApplicationInteractions } from './src/handlers/applicationHandler.mjs';
+// Import the handleTokenAddressSubmit function properly
+import { handleTokenAddressSubmit } from './applications/chains/solana/spotTrading/solSpotTrading.mjs';
 
 dotenv.config();
 
@@ -125,22 +127,62 @@ client.on('messageCreate', async (message) => {
     }
 });
 
-// Button interaction handler
+// Update this interaction handler to properly handle modal submissions
 client.on('interactionCreate', async (interaction) => {
-    if (interaction.isButton()) {
-        try {
-            await handleApplicationInteractions(interaction);
-        } catch (error) {
-            console.error('Button interaction error:', error);
-        }
-        return;
-    }
+    try {
+        if (interaction.isModalSubmit()) {
+            console.log(`Processing modal submission with ID: ${interaction.customId}`);
 
-    if (interaction.isModalSubmit() && interaction.customId === 'token_address_modal') {
-        try {
-            await handleTokenAddressSubmit(interaction);
-        } catch (error) {
-            console.error('Modal submit error:', error);
+            // Handle different modal types
+            switch (interaction.customId) {
+                case 'token_address_modal':
+                case 'token_address_input_modal':
+                    await handleTokenAddressSubmit(interaction);
+                    break;
+                case 'verify_2fa_modal':
+                    const code = interaction.fields.getTextInputValue('2fa_code');
+                    const isValid = await verify2FACode(interaction.user.id, code);
+                    
+                    if (isValid) {
+                        await interaction.reply({
+                            content: '✅ 2FA setup completed successfully!',
+                            ephemeral: true
+                        });
+                        
+                        // Wait a moment before showing the next step
+                        setTimeout(async () => {
+                            await sendQuickStartSecurity(interaction, 'wallet_security');
+                        }, 1500);
+                    } else {
+                        await interaction.reply({
+                            content: '❌ Invalid 2FA code. Please try again.',
+                            ephemeral: true
+                        });
+                    }
+                    break;
+                default:
+                    console.log(`Unhandled modal submission: ${interaction.customId}`);
+                    break;
+            }
+            return;
+        }
+
+        // Handle button interactions
+        if (interaction.isButton()) {
+            await handleApplicationInteractions(interaction);
+        }
+    } catch (error) {
+        console.error('Interaction error:', error);
+        // Attempt to reply if we haven't already
+        if (!interaction.replied && !interaction.deferred) {
+            try {
+                await interaction.reply({
+                    content: 'An error occurred while processing your request. Please try again.',
+                    ephemeral: true
+                });
+            } catch (replyError) {
+                console.error('Error sending error response:', replyError);
+            }
         }
     }
 });
@@ -170,41 +212,6 @@ client.on('interactionCreate', async (interaction) => {
             content: '❌ An error occurred. Please try again.',
             ephemeral: true
         }).catch(console.error);
-    }
-});
-
-// Update modal submit handler
-client.on('interactionCreate', async (interaction) => {
-    if (!interaction.isModalSubmit()) return;
-
-    try {
-        if (interaction.customId === 'verify_2fa_modal') {
-            const code = interaction.fields.getTextInputValue('2fa_code');
-            const isValid = await verify2FACode(interaction.user.id, code);
-
-            if (isValid) {
-                await interaction.reply({
-                    content: '✅ 2FA setup completed successfully!',
-                    ephemeral: true // Using simple ephemeral flag
-                });
-
-                // Wait a moment before showing the next step
-                setTimeout(async () => {
-                    await sendQuickStartSecurity(interaction, 'wallet_security');
-                }, 1500);
-            } else {
-                await interaction.reply({
-                    content: '❌ Invalid 2FA code. Please try again.',
-                    ephemeral: true // Using simple ephemeral flag
-                });
-            }
-        }
-    } catch (error) {
-        console.error('Modal submit error:', error);
-        await interaction.reply({
-            content: '❌ An error occurred. Please try again.',
-            ephemeral: true // Using simple ephemeral flag
-        });
     }
 });
 

@@ -18,6 +18,13 @@ const HELIUS_RPC = process.env.HELIUS_RPC;
 const TOKEN_MAP_URL = 'https://cdn.jsdelivr.net/gh/solana-labs/token-list@main/src/tokens/solana.tokenlist.json';
 let tokenMap = new Map();
 
+const POPULAR_TOKENS = {
+  'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN': { name: 'Jupiter', symbol: 'JUP' },
+  'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263': { name: 'Bonk', symbol: 'BONK' },
+  'YtfMZ4jg2ubdz4GsNdJWpJk3YTM5pUdMrFN7N6yvqZA': { name: 'Racoon', symbol: 'RAC' },
+  // Add more tokens as needed
+};
+
 if (!HELIUS_RPC) {
   throw new Error('HELIUS_RPC is not defined in the .env file.');
 }
@@ -92,24 +99,77 @@ export async function fetchTokenPrice(mint) {
 
 export async function fetchTokenDetails(mint2) {
   try {
+    // Try to get token details from our mapping first
+    if (POPULAR_TOKENS[mint2]) {
+      console.log(`Found token details in local mapping: ${POPULAR_TOKENS[mint2].name}`);
+      return POPULAR_TOKENS[mint2];
+    }
+    
     const mint1 = 'So11111111111111111111111111111111111111112'; // Default SOL mint address
     const url = `${globalURLS.raydiumMintAPI}?mint1=${mint1}&mint2=${mint2}&poolType=all&poolSortField=default&sortType=desc&pageSize=1&page=1`;
 
     console.log(`Fetching token details from: ${url}`);
 
     const response = await axios.get(url);
+    console.log('API response status:', response.status);
+    
+    // For debugging, print first part of the response data
+    let responseSnippet = JSON.stringify(response.data).substring(0, 200) + '...';
+    console.log('Response snippet:', responseSnippet);
 
-    //console.log('Full response from Raydium API:', JSON.stringify(response.data, null, 2));
-
-    if (response.status === 200 && response.data?.data?.data?.length > 0) {
-      return response.data.data.data[0]; // Adjusted to match nested data structure
+    if (response.status === 200) {
+      if (response.data?.data?.data?.length > 0) {
+        // Main path - token found in API
+        const tokenData = response.data.data.data[0];
+        console.log('Token data found:', tokenData.name || 'No name in data');
+        return {
+          name: tokenData.name || tokenData.symbol || 'Unknown Token',
+          symbol: tokenData.symbol || 'Unknown'
+        };
+      } else if (response.data?.data?.tokens) {
+        // Alternative path - check if token is in tokens list
+        const token = response.data.data.tokens.find(t => t.mint === mint2);
+        if (token) {
+          console.log('Token found in tokens list:', token.name);
+          return {
+            name: token.name || token.symbol || 'Unknown Token',
+            symbol: token.symbol || 'Unknown'
+          };
+        }
+      }
+      
+      // If no data from API, try to fetch from Jupiter API as fallback
+      console.log('No token details found in Raydium API, trying Jupiter API');
+      const jupiterResponse = await axios.get(`https://token.jup.ag/all`);
+      
+      if (jupiterResponse.status === 200 && jupiterResponse.data) {
+        const jupToken = jupiterResponse.data.find(t => t.address === mint2);
+        if (jupToken) {
+          console.log('Token found in Jupiter API:', jupToken.name);
+          return {
+            name: jupToken.name || jupToken.symbol || 'Unknown Token',
+            symbol: jupToken.symbol || 'Unknown'
+          };
+        }
+      }
     }
 
+    // Last resort - check if it's one of the well-known tokens
+    if (mint2 === 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN') {
+      return { name: 'Jupiter', symbol: 'JUP' };
+    } else if (mint2 === 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263') {
+      return { name: 'Bonk', symbol: 'BONK' };
+    } else if (mint2 === 'YtfMZ4jg2ubdz4GsNdJWpJk3YTM5pUdMrFN7N6yvqZA') {
+      return { name: 'RAC', symbol: 'RAC' };
+    }
+
+    // If no token information was found from any source
     console.error(`Token details not found for mint address: ${mint2}`);
-    return null;
+    return { name: 'Unknown Token', symbol: 'Unknown' };
   } catch (error) {
     console.error(`Error fetching token details for ${mint2}:`, error.message);
-    return null;
+    // Return default token info with the mint
+    return { name: 'Unknown Token', symbol: 'Unknown' };
   }
 }
 
