@@ -5,6 +5,7 @@ import {
     ButtonStyle
 } from 'discord.js';
 import { state } from '../solSpotTrading.mjs';
+import { fetchSolBalance } from '../functions/utils.mjs';
 
 /**
  * A simpler version of the token purchase config display
@@ -27,6 +28,9 @@ export async function showTokenPurchaseConfigSimplified(interaction, tokenDetail
         const tokenSymbol = tokenDetails?.symbol || '';
         const displayName = tokenSymbol ? `${tokenName} (${tokenSymbol})` : tokenName;
         
+        // Fetch the user's SOL balance
+        const solBalance = await fetchSolBalance(config.solPublicKey);
+        
         // Create a simple embed
         const embed = new EmbedBuilder()
             .setTitle('Token Purchase Setup')
@@ -41,6 +45,11 @@ export async function showTokenPurchaseConfigSimplified(interaction, tokenDetail
                     name: 'Price', 
                     value: tokenPrice ? `$${tokenPrice}` : 'Unknown', 
                     inline: true 
+                },
+                {
+                    name: 'Wallet Balance',
+                    value: `${solBalance.toFixed(4)} SOL`,
+                    inline: true
                 },
                 { 
                     name: 'Contract Address', 
@@ -125,6 +134,9 @@ export async function showTokenPurchaseConfig(interaction, tokenDetails, tokenPr
         const tokenSymbol = tokenDetails?.symbol || 'UNKNOWN';
         const displayName = tokenSymbol ? `${tokenName} (${tokenSymbol})` : tokenName;
         
+        // Fetch the user's SOL balance
+        const solBalance = await fetchSolBalance(config.solPublicKey);
+        
         const embed = new EmbedBuilder()
             .setTitle('Token Purchase Configuration')
             .setColor(0x0099FF)
@@ -138,6 +150,11 @@ export async function showTokenPurchaseConfig(interaction, tokenDetails, tokenPr
                     name: 'Current Price', 
                     value: tokenPrice ? `$${tokenPrice}` : 'Unknown', 
                     inline: true 
+                },
+                {
+                    name: 'Wallet Balance',
+                    value: `${solBalance.toFixed(4)} SOL`,
+                    inline: true
                 },
                 {
                     name: 'Purchase Amount',

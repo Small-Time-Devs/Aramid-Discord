@@ -71,11 +71,11 @@ export async function checkUserWallet(userId, username) {
             if (!addressBookData.Item?.xrpPublicKey || !addressBookData.Item?.xrpPrivateKey) {
                 await generateXrpWallet(userId);
             }
-
-            return {
+            
+                        return {
                 exists: true,
                 solPublicKey: addressBookData.Item?.solPublicKey,
-                xrpPublicKey: addressBookData.Item?.xrpPublicKey,
+                                xrpPublicKey: addressBookData.Item?.xrpPublicKey,
                 twoFactorEnabled: userData.Item.twoFactorEnabled || false,
                 username: userData.Item.username,
                 referredBy: userData.Item.referredBy
@@ -490,20 +490,91 @@ export async function saveTradeSettings(userId, newSettings) {
  */
 export async function getReferralPublicKey(userId) {
     try {
-        // If you have a specific table for referrals, use that
-        const params = {
-            TableName: process.env.DYNAMODB_USER_TABLE,
-            Key: {
-                userId: userId
-            }
-        };
+        // Get user data from the users table
+        const userData = await docClient.send(new GetCommand({
+            TableName: 'AramidDiscord-Users',
+            Key: { userID: userId.toString() }
+        }));
         
-        const result = await docClient.get(params).promise();
-        
-        // Return the referral public key if it exists, otherwise null
-        return result?.Item?.referralPublicKey || null;
+        // Check if the user has a referral key set
+        if (userData?.Item?.referralPublicKey) {
+            return userData.Item.referralPublicKey;
+        }
+
+        // If user has no referral key, return null
+        return null;
     } catch (error) {
         console.error(`Error getting referral public key for user ${userId}:`, error);
+        return null;
+    }
+}
+
+/**
+ * Safely get and decrypt a user's Solana private key for transactions
+ * @param {string} userId - Discord user ID
+ * @returns {Promise<Object>} - Object containing solPublicKey and solPrivateKey
+ */
+export async function getTransactionKeys(userId) {
+    try {
+        console.log(`Fetching transaction keys for user: ${userId}`);
+        
+        // Get user's wallet address book record
+        const addressBookData = await docClient.send(new GetCommand({
+            TableName: 'AramidDiscord-AddressBook',
+            Key: { userID: userId.toString() }
+        }));
+
+        // Check if we have data
+        if (!addressBookData.Item) {
+            console.error(`No address book record found for user: ${userId}`);
+            return { success: false, error: 'No wallet found' };
+        }
+
+        // Check if we have the keys we need
+        if (!addressBookData.Item.solPublicKey || !addressBookData.Item.solPrivateKey) {
+            console.error(`Missing wallet keys for user: ${userId}`);
+            return { success: false, error: 'Incomplete wallet data' };
+        }
+
+        // Decrypt the private key
+        const solPublicKey = addressBookData.Item.solPublicKey;
+        let solPrivateKey;
+        
+        try {
+            solPrivateKey = decryptPrivateKey(addressBookData.Item.solPrivateKey);
+        } catch (decryptError) {
+            console.error(`Failed to decrypt private key for user: ${userId}`, decryptError);
+            return { success: false, error: 'Failed to decrypt private key' };
+        }
+
+        // Return the keys needed for transactions
+        return {
+            success: true,
+            solPublicKey,
+            solPrivateKey
+        };
+    } catch (error) {
+        console.error(`Error fetching transaction keys for user ${userId}:`, error);
+        return { success: false, error: error.message || 'Unknown error' };
+    }
+}
+
+/**
+ * Get user's referral key for transaction fee sharing
+ * @param {string} userId - Discord user ID
+ * @returns {Promise<string|null>} - Referral public key or null if not found
+ */
+export async function getTransactionReferral(userId) {
+    try {
+        // Get user data from the users table
+        const userData = await docClient.send(new GetCommand({
+            TableName: 'AramidDiscord-Users',
+            Key: { userID: userId.toString() }
+        }));
+        
+        return userData?.Item?.referralPublicKey || null;
+    } catch (error) {
+        console.error(`Error getting referral key for user ${userId}:`, error);
         return null;
     }
 }

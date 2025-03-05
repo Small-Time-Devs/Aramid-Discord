@@ -19,8 +19,9 @@ import { showTokenPurchaseConfig } from '../ui/purchaseConfig.mjs';
 import { showTokenBuyOptions } from './tokenSelection.mjs';
 import { showSolanaSpotTradingMenu } from '../ui/dashboard.mjs';
 import axios from 'axios';
-import { globalURLS } from '../../../../../src/globals/global.mjs';
-import { checkUserWallet } from '../../../../../src/db/dynamo.mjs';
+import { globalURLS, globalStaticConfig } from '../../../../../src/globals/global.mjs';
+// Import the transaction functions directly from dynamo.mjs
+import { checkUserWallet, getTransactionKeys, getTransactionReferral } from '../../../../../src/db/dynamo.mjs';
 
 /**
  * Handle set purchase amount button
@@ -375,7 +376,7 @@ export async function handleExecutePurchase(interaction) {
             return;
         }
         
-        // Do some basic validation
+        // Basic validation for balance
         const solBalance = await fetchSolBalance(config.solPublicKey);
         if (solBalance < config.amount) {
             await interaction.followUp({
@@ -391,30 +392,88 @@ export async function handleExecutePurchase(interaction) {
             ephemeral: true
         });
         
-        // Since getReferralPublicKey might not exist, we'll skip that part
-        // and just use an empty string for the referral key
-        const referralPublicKey = '';
+        // Get the fresh transaction keys directly from dynamo.mjs
+        const walletKeys = await getTransactionKeys(userId);
+        
+        if (!walletKeys.success) {
+            await interaction.followUp({
+                content: `❌ ${walletKeys.error || 'Failed to retrieve wallet keys'}. Please try again.`,
+                ephemeral: true
+            });
+            return;
+        }
+        
+        // Set up the API request parameters with the fresh keys
+        const apiParams = {
+            private_key: walletKeys.solPrivateKey,
+            outputMint: config.outputMint,
+            amount: config.amount,
+            slippage: config.slippage,
+        };
+        
+        // Debug log with redacted private key
+        console.log('Preparing API parameters with redacted private key:', {
+            ...apiParams,
+            private_key: '[REDACTED]'
+        });
+        
+        // Add platform fee if enabled
+        if (globalStaticConfig.enablePlatformFee) {
+            apiParams.platformPublicKey = globalStaticConfig.platformPublicKey;
+            apiParams.platformPercentage = globalStaticConfig.platformFeePercentage;
+            console.log('Platform fee enabled:', 
+                       `${globalStaticConfig.platformFeePercentage}% to ${globalStaticConfig.platformPublicKey}`);
+        }
+        
+        // Add referral fee if enabled
+        if (globalStaticConfig.enableReferralFee) {
+            // Get the user's referral key from DynamoDB
+            let referralKey = await getTransactionReferral(userId);
+            
+            // If no referral key is found, use the default from .env
+            if (!referralKey) {
+                referralKey = process.env.DEFAULT_REFERRAL_KEY || '';
+                console.log(`No specific referral key found for user ${userId}, using default: ${referralKey}`);
+            } else {
+                console.log(`Found referral key for user ${userId}: ${referralKey}`);
+            }
+            
+            // Only add the referral params if we have a valid key
+            if (referralKey) {
+                apiParams.referralPublicKey = referralKey;
+                apiParams.referralPercentage = globalStaticConfig.referralFeePercentage;
+                console.log('Referral fee enabled:', 
+                           `${globalStaticConfig.referralFeePercentage}% to ${referralKey}`);
+            }
+        }
         
         try {
-            // Make the actual API call to execute the purchase
-            const response = await axios.post(`${globalURLS.smallTimeDevsTradeAPI}/aramidBuy`, {
-                private_key: config.solPrivateKey,
-                public_key: config.solPublicKey,
-                mint: config.outputMint,
-                amount: config.amount,
-                referralPublicKey: referralPublicKey,
-                priorityFee: config.priorityFee,
-                slippage: config.slippage,
-                useJito: config.jito || false,
+            // Final verification that private key is included
+            if (!apiParams.private_key) {
+                throw new Error('Private key is missing from API parameters');
+            }
+            
+            console.log('Sending transaction to API...');
+            const response = await axios.post(globalURLS.smallTimeDevsJupiterBuy, apiParams);
+            
+            // Log the response for debugging
+            console.log('API Response received:', {
+                status: response.status,
+                success: response.data.success,
+                message: response.data.message,
+                txid: response.data.txid
             });
             
-            console.log('API Response:', response.data);
-            
-            if (response.data.message === 'Transaction confirmed') {
-                // Create success embed with actual transaction data
+            // Check if the transaction was successful
+            // Your API returns success: true and a txid when successful
+            if (response.data && (response.data.success === true || response.data.message === 'Transaction confirmed')) {
+                // Transaction was successful, get the token details
                 const tokenDetails = await fetchTokenDetails(config.outputMint);
                 const tokenName = tokenDetails?.name || 'Unknown Token';
                 const tokenSymbol = tokenDetails?.symbol || '';
+                
+                const txid = response.data.txid || response.data.signature; // Support both response formats
+                const tokensPurchased = response.data.tokensPurchased || response.data.outputAmount || 'Unknown';
                 
                 const embed = new EmbedBuilder()
                     .setTitle('Transaction Successful')
@@ -432,7 +491,7 @@ export async function handleExecutePurchase(interaction) {
                         },
                         { 
                             name: 'Tokens Purchased', 
-                            value: `${response.data.tokensPurchased || 'Unknown'}`, 
+                            value: `${tokensPurchased}`, 
                             inline: true 
                         },
                         { 
@@ -442,7 +501,7 @@ export async function handleExecutePurchase(interaction) {
                         },
                         { 
                             name: 'Transaction ID', 
-                            value: `[View on Solscan](https://solscan.io/tx/${response.data.txid})`, 
+                            value: `[View on Solscan](https://solscan.io/tx/${txid})`, 
                             inline: false 
                         }
                     );
@@ -451,12 +510,19 @@ export async function handleExecutePurchase(interaction) {
                     embeds: [embed],
                     ephemeral: true
                 });
-            } else {
-                throw new Error(response.data.error || 'Unknown error occurred');
+            } else if (response.data && response.data.error) {
+                // Handle explicit error from API
+                throw new Error(response.data.error);
+            } else if (!response.data || !response.data.success) {
+                // Check the response structure for other potential error indicators
+                const errorMsg = response.data?.message || 'Unknown error';
+                console.error('Unexpected API response:', response.data);
+                throw new Error(`API returned an unexpected response: ${errorMsg}`);
             }
             
         } catch (purchaseError) {
             console.error('Purchase execution error:', purchaseError);
+            console.error('Error details:', purchaseError.response?.data || 'No additional details');
             
             let errorMessage = 'Transaction failed';
             if (purchaseError.response?.data?.error) {

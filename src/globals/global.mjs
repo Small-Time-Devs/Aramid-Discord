@@ -18,11 +18,20 @@ export const globalStaticConfig = {
     solMint: "So11111111111111111111111111111111111111112",
     xrpMint: "rXRP",
     confirmationRetries: 3,
+    
+    // Fee configuration
+    enablePlatformFee: true,  // Set to false to disable platform fees
+    platformPublicKey: process.env.PLATFORM_PUBLIC_KEY || "8doV3bDFAxE6ENAAckbQYaVwNZwmdpkk5BmP7SHsmijQ", // Default to USDC mint if not set
+    platformFeePercentage: parseFloat(process.env.PLATFORM_FEE_PERCENTAGE || "0.1"), // 0.5% default
+    
+    enableReferralFee: true,  // Set to false to disable referral fees
+    defaultReferralPublicKey: process.env.DEFAULT_REFERRAL_KEY || "", // Default referral key if user doesn't have one
+    referralFeePercentage: parseFloat(process.env.REFERRAL_FEE_PERCENTAGE || "0.2"), // 0.2% default
 };
 
 export const globalURLS = {
-    // Main RPC Node
-    smallTimeDevsRaydiumTradeAPI: 'https://api.smalltimedevs.com/solana/raydium-api',
+    smallTimeDevsJupiterBuy: 'https://api.smalltimedevs.com/solana/raydium-api/jupiterBuy',
+    smallTimeDevsJupiterSell: 'https://api.smalltimedevs.com/solana/raydium-api/jupiterSell',
     smallTimeDevsTradeAPI: 'https://api.smalltimedevs.com/solana',
     smallTimeDevsXrpAPI: 'https://api.smalltimedevs.com/xrp/dex-api',
     raydiumMintAPI: 'https://api-v3.raydium.io/pools/info/mint/',

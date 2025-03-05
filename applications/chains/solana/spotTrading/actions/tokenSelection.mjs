@@ -198,8 +198,12 @@ export async function handleTokenSelection(interaction) {
         const tokenDetails = await fetchTokenDetails(tokenMint);
         const tokenPrice = await fetchTokenPrice(tokenMint);
         
+        // Get the user's SOL balance
+        const solBalance = await fetchSolBalance(solPublicKey);
+        
         console.log('Token details retrieved:', tokenDetails);
         console.log('Token price:', tokenPrice);
+        console.log('SOL balance:', solBalance);
         
         // Get token name with better fallback logic
         const tokenName = tokenDetails?.name || 'Unknown Token';
@@ -212,6 +216,7 @@ export async function handleTokenSelection(interaction) {
             .addFields(
                 { name: 'Selected Token', value: displayName, inline: true },
                 { name: 'Current Price', value: tokenPrice ? `$${tokenPrice}` : 'Unknown', inline: true },
+                { name: 'Wallet Balance', value: `${solBalance.toFixed(4)} SOL`, inline: true },
                 { name: 'Contract Address', value: `\`${tokenMint}\``, inline: false }
             );
 
@@ -506,9 +511,10 @@ export async function handlePopularTokenSelect(interaction) {
             state.solanaBuyTokenConfig[userId].outputMint = tokenAddress;
         }
         
-        // Fetch token details
+        // Fetch token details and user's SOL balance
         const tokenDetails = await fetchTokenDetails(tokenAddress);
         const tokenPrice = await fetchTokenPrice(tokenAddress);
+        const solBalance = await fetchSolBalance(state.solanaBuyTokenConfig[userId].solPublicKey);
         
         // Get token name with better fallback logic
         const tokenName = tokenDetails?.name || 'Unknown Token';
@@ -524,6 +530,7 @@ export async function handlePopularTokenSelect(interaction) {
             .addFields(
                 { name: 'Selected Token', value: displayName, inline: true },
                 { name: 'Current Price', value: tokenPrice ? `$${tokenPrice}` : 'Unknown', inline: true },
+                { name: 'Wallet Balance', value: `${solBalance.toFixed(4)} SOL`, inline: true },
                 { name: 'Contract Address', value: `\`${tokenAddress}\``, inline: false }
             );
 
