@@ -441,22 +441,51 @@ export async function registerDiscordUser(userId, username, referredBy = '202145
     }
 }
 
+/**
+ * Get user's trade settings from DynamoDB
+ * @param {string} userId - Discord user ID
+ * @returns {Promise<Object|null>} - User's trade settings or null if not found
+ */
 export async function getTradeSettings(userId) {
     try {
+        console.log(`Fetching trade settings for user: ${userId}`);
+        
         const result = await docClient.send(new GetCommand({
             TableName: 'AramidDiscord-Settings',
             Key: { userID: userId.toString() }
         }));
         
-        return result.Item;
+        if (result.Item) {
+            console.log(`Found settings for user ${userId}`);
+            return result.Item;
+        } else {
+            console.log(`No settings found for user ${userId}, returning default settings`);
+            // Return default settings if none are found
+            return {
+                minQuickBuy: 0.1,
+                mediumQuickBuy: 0.5,
+                largeQuickBuy: 1.0,
+                minQuickSell: 10,
+                mediumQuickSell: 50,
+                largeQuickSell: 100
+            };
+        }
     } catch (error) {
-        console.error('Error fetching trade settings:', error);
+        console.error(`Error fetching trade settings for user ${userId}:`, error);
         return null;
     }
 }
 
+/**
+ * Save user's trade settings to DynamoDB
+ * @param {string} userId - Discord user ID
+ * @param {Object} newSettings - Settings to save
+ * @returns {Promise<boolean>} - Success status
+ */
 export async function saveTradeSettings(userId, newSettings) {
     try {
+        console.log(`Saving trade settings for user ${userId}:`, newSettings);
+        
         // Get existing settings first
         const existingSettings = await getTradeSettings(userId) || {};
         
@@ -465,6 +494,13 @@ export async function saveTradeSettings(userId, newSettings) {
             ...existingSettings,
             ...newSettings
         };
+
+        // Ensure all values are properly formatted as numbers
+        for (const key in settings) {
+            if (typeof settings[key] === 'string' && !isNaN(parseFloat(settings[key]))) {
+                settings[key] = parseFloat(settings[key]);
+            }
+        }
 
         await docClient.send(new PutCommand({
             TableName: 'AramidDiscord-Settings',
@@ -478,7 +514,7 @@ export async function saveTradeSettings(userId, newSettings) {
         console.log(`Trade settings saved for user ${userId}:`, settings);
         return true;
     } catch (error) {
-        console.error('Error saving trade settings:', error);
+        console.error(`Error saving trade settings for user ${userId}:`, error);
         throw error;
     }
 }
