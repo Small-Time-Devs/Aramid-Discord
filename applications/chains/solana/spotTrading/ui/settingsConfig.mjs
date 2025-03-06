@@ -93,6 +93,10 @@ export async function showTradeSettingsMenu(interaction, settings) {
  */
 export async function showSettingsSuccessMessage(interaction, settings, type) {
     try {
+        console.log(`🔍 [SETTINGS UI] Showing ${type} settings success message`);
+        console.log(`🔍 [SETTINGS UI] Settings to display: ${JSON.stringify(settings)}`);
+        console.log(`🔍 [SETTINGS UI] Interaction state - deferred: ${interaction.deferred}, replied: ${interaction.replied}`);
+        
         const embed = new EmbedBuilder()
             .setTitle('✅ Settings Updated')
             .setDescription(`Your quick ${type} settings have been saved`)
@@ -120,11 +124,32 @@ export async function showSettingsSuccessMessage(interaction, settings, type) {
                         .setLabel('Back')
                         .setStyle(ButtonStyle.Secondary)
                 );
-                
-            await interaction.editReply({
-                embeds: [embed],
-                components: [row]
-            });
+            
+            // Check if the interaction has been replied to or deferred
+            if (interaction.replied) {
+                console.log('🔍 [SETTINGS UI] Using followUp for already replied interaction');
+                await interaction.followUp({
+                    embeds: [embed],
+                    components: [row],
+                    ephemeral: true
+                });
+                console.log('🔍 [SETTINGS UI] followUp sent successfully');
+            } else if (interaction.deferred) {
+                console.log('🔍 [SETTINGS UI] Using editReply for deferred interaction');
+                await interaction.editReply({
+                    embeds: [embed],
+                    components: [row]
+                });
+                console.log('🔍 [SETTINGS UI] editReply sent successfully');
+            } else {
+                console.log('🔍 [SETTINGS UI] Using reply for new interaction');
+                await interaction.reply({
+                    embeds: [embed],
+                    components: [row],
+                    ephemeral: true
+                });
+                console.log('🔍 [SETTINGS UI] reply sent successfully');
+            }
         } else {
             embed.addFields({
                 name: '📉 Quick Sell Amounts (% of tokens)',
@@ -147,20 +172,54 @@ export async function showSettingsSuccessMessage(interaction, settings, type) {
                         .setLabel('Back')
                         .setStyle(ButtonStyle.Secondary)
                 );
-                
-            await interaction.editReply({
-                embeds: [embed],
-                components: [row]
-            });
+            
+            // Check if the interaction has been replied to or deferred
+            if (interaction.replied) {
+                console.log('🔍 [SETTINGS UI] Using followUp for already replied interaction');
+                await interaction.followUp({
+                    embeds: [embed],
+                    components: [row],
+                    ephemeral: true
+                });
+                console.log('🔍 [SETTINGS UI] followUp sent successfully');
+            } else if (interaction.deferred) {
+                console.log('🔍 [SETTINGS UI] Using editReply for deferred interaction');
+                await interaction.editReply({
+                    embeds: [embed],
+                    components: [row]
+                });
+                console.log('🔍 [SETTINGS UI] editReply sent successfully');
+            } else {
+                console.log('🔍 [SETTINGS UI] Using reply for new interaction');
+                await interaction.reply({
+                    embeds: [embed],
+                    components: [row],
+                    ephemeral: true
+                });
+                console.log('🔍 [SETTINGS UI] reply sent successfully');
+            }
         }
         
-        console.log(`Settings success message shown for ${type} settings`);
+        console.log(`✅ [SETTINGS UI] Settings success message shown for ${type} settings`);
         
     } catch (error) {
-        console.error(`Error showing settings success message:`, error);
-        await interaction.followUp({
-            content: `✅ Settings saved, but there was an error displaying details: ${error.message}`,
-            ephemeral: true
-        });
+        console.error(`❌ [SETTINGS UI ERROR] Error showing settings success message:`, error);
+        console.error('❌ [SETTINGS UI ERROR] Error stack:', error.stack);
+        console.error(`❌ [SETTINGS UI ERROR] Interaction state - deferred: ${interaction.deferred}, replied: ${interaction.replied}`);
+        
+        // Only follow up if we've already replied or deferred
+        if (interaction.replied || interaction.deferred) {
+            console.log('🔍 [SETTINGS UI] Trying to followUp after error');
+            await interaction.followUp({
+                content: `✅ Settings saved, but there was an error displaying details: ${error.message}`,
+                ephemeral: true
+            });
+        } else {
+            console.log('🔍 [SETTINGS UI] Trying to reply after error');
+            await interaction.reply({
+                content: `✅ Settings saved, but there was an error displaying details: ${error.message}`,
+                ephemeral: true
+            });
+        }
     }
 }

@@ -42,7 +42,83 @@ export async function handleApplicationInteractions(interaction) {
             console.log(`[DEBUG] Button interaction: ${interaction.customId}`);
         } else if (interaction.isModalSubmit()) {
             console.log(`[DEBUG] Modal submission: ${interaction.customId}`);
-            console.log(`[DEBUG] Available fields: ${Array.from(interaction.fields.fields.keys()).join(', ')}`);
+            console.log(`[DEBUG] Modal user: ${interaction.user.id} (${interaction.user.tag})`);
+            console.log(`[DEBUG] Modal fields: ${Array.from(interaction.fields.fields.keys()).join(', ')}`);
+            
+            // Log the actual values for debugging (redact if sensitive)
+            const fieldValues = {};
+            interaction.fields.fields.forEach((value, key) => {
+                fieldValues[key] = value.value;
+            });
+            console.log(`[DEBUG] Modal values: ${JSON.stringify(fieldValues)}`);
+        }
+        
+        // Prioritize modal handling, it comes before buttons
+        if (interaction.isModalSubmit()) {
+            console.log(`[MODAL ROUTER] Determining handler for modal: ${interaction.customId}`);
+            
+            // Handle settings modal submissions
+            if (interaction.customId === 'quick_buy_modal') {
+                console.log('[MODAL ROUTER] Routing quick_buy_modal to handleQuickBuySubmission');
+                await handleQuickBuySubmission(interaction);
+                return;
+            }
+            
+            if (interaction.customId === 'quick_sell_modal') {
+                console.log('[MODAL ROUTER] Routing quick_sell_modal to handleQuickSellSubmission');
+                await handleQuickSellSubmission(interaction);
+                return;
+            }
+            
+            // Token and purchase modals
+            switch (interaction.customId) {
+                case 'token_address_modal':
+                case 'token_address_input_modal':
+                    console.log('[MODAL ROUTER] Routing token address modal to handleTokenAddressSubmit');
+                    await handleTokenAddressSubmit(interaction);
+                    return;
+                
+                case 'purchase_amount_modal':
+                    console.log('[MODAL ROUTER] Routing purchase amount modal to handlePurchaseAmountSubmit');
+                    await handlePurchaseAmountSubmit(interaction);
+                    return;
+                
+                default:
+                    console.log(`[MODAL ROUTER] ⚠️ Unhandled modal submission: ${interaction.customId}`);
+                    // Last resort handler for modals
+                    await interaction.reply({ 
+                        content: "This modal submission wasn't recognized. Please try again.", 
+                        ephemeral: true 
+                    });
+                    break;
+            }
+            
+            // If we reach here, the modal wasn't handled, so return early
+            return;
+        }
+        
+        // Button handling comes after modals
+        if (interaction.isButton()) {
+            // Handle settings buttons
+            if (interaction.customId === 'trade_settings' || interaction.customId === 'settings') {
+                console.log('[DEBUG] Routing to handleTradeSettings');
+                await handleTradeSettings(interaction);
+                return;
+            }
+            
+            if (interaction.customId === 'set_quick_buy') {
+                console.log('[DEBUG] Routing to showQuickBuyModal');
+                await showQuickBuyModal(interaction);
+                return;
+            }
+            
+            if (interaction.customId === 'set_quick_sell') {
+                console.log('[DEBUG] Routing to showQuickSellModal');
+                await showQuickSellModal(interaction);
+                return;
+            }
+            
+            // ...other button handlers...
         }
         
         // SETTINGS HANDLERS - highest priority
@@ -51,35 +127,68 @@ export async function handleApplicationInteractions(interaction) {
         if (interaction.isButton()) {
             // Handle settings buttons
             if (interaction.customId === 'trade_settings' || interaction.customId === 'settings') {
-                console.log('[DEBUG] Using settings button handler');
+                console.log('[DEBUG] Routing to handleTradeSettings');
                 await handleTradeSettings(interaction);
                 return;
             }
             
             if (interaction.customId === 'set_quick_buy') {
-                console.log('[DEBUG] Using quick buy button handler');
+                console.log('[DEBUG] Routing to showQuickBuyModal');
                 await showQuickBuyModal(interaction);
                 return;
             }
             
             if (interaction.customId === 'set_quick_sell') {
-                console.log('[DEBUG] Using quick sell button handler');
+                console.log('[DEBUG] Routing to showQuickSellModal');
                 await showQuickSellModal(interaction);
                 return;
             }
+            
+            // ...other button handlers...
         }
         
         if (interaction.isModalSubmit()) {
-            // Handle settings modal submissions
+            // Log all modal fields for debugging
+            console.log(`[MODAL DEBUG] Modal ${interaction.customId} submission fields:`, 
+                Array.from(interaction.fields.fields.entries())
+                    .map(([id, value]) => `${id}: ${value.value}`).join(', '));
+            
+            // Handle settings modal submissions with more specific error handling
             if (interaction.customId === 'quick_buy_modal') {
-                console.log('[DEBUG] Processing quick buy modal submission');
-                await handleQuickBuySubmission(interaction);
+                console.log('[DEBUG] Found quick_buy_modal submission, routing to handleQuickBuySubmission');
+                try {
+                    await handleQuickBuySubmission(interaction);
+                    console.log('[DEBUG] handleQuickBuySubmission completed successfully');
+                } catch (modalError) {
+                    console.error('[DEBUG] Error in handleQuickBuySubmission:', modalError);
+                    console.error('[DEBUG] Error stack:', modalError.stack);
+                    // Only reply if we haven't already
+                    if (!interaction.replied && !interaction.deferred) {
+                        await interaction.reply({
+                            content: `❌ Error processing settings: ${modalError.message}`,
+                            ephemeral: true
+                        });
+                    }
+                }
                 return;
             }
             
             if (interaction.customId === 'quick_sell_modal') {
-                console.log('[DEBUG] Processing quick sell modal submission');
-                await handleQuickSellSubmission(interaction);
+                console.log('[DEBUG] Found quick_sell_modal submission, routing to handleQuickSellSubmission');
+                try {
+                    await handleQuickSellSubmission(interaction);
+                    console.log('[DEBUG] handleQuickSellSubmission completed successfully');
+                } catch (modalError) {
+                    console.error('[DEBUG] Error in handleQuickSellSubmission:', modalError);
+                    console.error('[DEBUG] Error stack:', modalError.stack);
+                    // Only reply if we haven't already
+                    if (!interaction.replied && !interaction.deferred) {
+                        await interaction.reply({
+                            content: `❌ Error processing settings: ${modalError.message}`,
+                            ephemeral: true
+                        });
+                    }
+                }
                 return;
             }
             
@@ -210,6 +319,16 @@ export async function handleApplicationInteractions(interaction) {
     } catch (error) {
         console.error('Error handling application interaction:', error);
         console.error('Error stack:', error.stack);
+        
+        // Add additional context for debugging
+        console.error('Interaction type:', interaction.type);
+        console.error('Interaction ID:', interaction.id);
+        console.error('User:', `${interaction.user.tag} (${interaction.user.id})`);
+        
+        if (interaction.isModalSubmit()) {
+            console.error('Modal fields:', Array.from(interaction.fields.fields.keys()));
+        }
+        
         try {
             if (!interaction.replied && !interaction.deferred) {
                 await interaction.reply({
