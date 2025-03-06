@@ -1,13 +1,23 @@
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, Events } from 'discord.js';
 import { sendApplicationMenu, sendChainSelectionForApp } from '../utils/discordMessages.mjs';
 import { checkUserWallet } from '../db/dynamo.mjs';
-// Import the actions from settings.mjs directly instead of through solSpotTrading.mjs
+
+// Import all handlers directly from settings.mjs (not through directSettings.mjs which doesn't exist)
 import { 
     handleTradeSettings, 
     showQuickBuyModal, 
     showQuickSellModal,
-    handleQuickBuySubmission,
-    handleQuickSellSubmission
+    handleQuickBuySubmission, 
+    handleQuickSellSubmission,
+    // Import the functions that were in directSettings directly from settings.mjs
+    handleSettingsButton, 
+    handleSetBuyButton, 
+    handleSetSellButton,
+    handleBuyModalSubmit,
+    handleSellModalSubmit,
+    // Import the exported objects for backward compatibility
+    directSettings,
+    standaloneSettings
 } from '../../applications/chains/solana/spotTrading/actions/settings.mjs';
 
 // Import other handlers from solSpotTrading.mjs
@@ -31,120 +41,15 @@ import {
     handleBackToSpotTrading
 } from '../../applications/chains/solana/spotTrading/solSpotTrading.mjs';
 
-// Import the standalone settings module
-import { standaloneSettings } from '../../applications/chains/solana/spotTrading/actions/standaloneSettings.mjs';
-
-// Import direct settings handlers
-import { 
-    handleSettingsButton, 
-    handleSetBuyButton, 
-    handleSetSellButton,
-    handleBuyModalSubmit,
-    handleSellModalSubmit
-} from '../../applications/chains/solana/spotTrading/actions/directSettings.mjs';
-
-// Import the simple settings handler
-import { settingsHandler } from '../utils/settingsHandler.mjs';
+// Remove any imports from non-existent files
+// Remove: import { settingsHandler } from '../utils/settingsHandler.mjs';
 
 /**
  * Handle application interactions
  */
 export async function handleApplicationInteractions(interaction) {
     try {
-        // Add detailed logging for modal submissions to help diagnose issues
-        if (interaction.isModalSubmit()) {
-            console.log(`[DEBUG] Processing modal submission: ${interaction.customId}`);
-            console.log(`[DEBUG] Available fields:`, Array.from(interaction.fields.fields.keys()));
-        }
-        
-        // Handle button interactions
-        if (interaction.isButton()) {
-            // ... existing button handling code ...
-            
-            // Special case for settings button - make sure we're handling it correctly
-            if (interaction.customId === 'trade_settings') {
-                console.log('[DEBUG] Trade settings button clicked');
-                await handleTradeSettings(interaction);
-                return;
-            }
-            
-            if (interaction.customId === 'set_quick_buy') {
-                console.log('[DEBUG] Set quick buy button clicked');
-                await showQuickBuyModal(interaction);
-                return;
-            }
-            
-            if (interaction.customId === 'set_quick_sell') {
-                console.log('[DEBUG] Set quick sell button clicked');
-                await showQuickSellModal(interaction);
-                return;
-            }
-            
-            // ... rest of button handling ...
-        }
-        
-        // Handle modal submissions - make sure we're handling the quick buy/sell modals correctly
-        if (interaction.isModalSubmit()) {
-            // Direct access to modal fields for debugging purposes
-            console.log(`[DEBUG] Modal submission fields:`, 
-                Array.from(interaction.fields.fields.entries())
-                    .map(([id, field]) => `${id}: ${field.value}`));
-            
-            if (interaction.customId === 'quick_buy_modal') {
-                console.log('[DEBUG] Quick buy modal submitted');
-                // Call the handler directly without any wrapping
-                await handleQuickBuySubmission(interaction);
-                return;
-            }
-            
-            if (interaction.customId === 'quick_sell_modal') {
-                console.log('[DEBUG] Quick sell modal submitted');
-                // Call the handler directly without any wrapping
-                await handleQuickSellSubmission(interaction);
-                return;
-            }
-            
-            // ... rest of modal handling ...
-        }
-        
-        // --- SETTINGS HANDLERS ---
-        // These come first to ensure they take priority
-        
-        // Handle settings buttons
-        if (interaction.isButton()) {
-            if (interaction.customId === 'trade_settings' || interaction.customId === 'settings') {
-                await settingsHandler.showSettings(interaction);
-                return;
-            }
-            
-            if (interaction.customId === 'settings_edit_buy') {
-                await settingsHandler.showBuyAmountsModal(interaction);
-                return;
-            }
-            
-            if (interaction.customId === 'settings_edit_sell') {
-                await settingsHandler.showSellAmountsModal(interaction);
-                return;
-            }
-        }
-        
-        // Handle settings modals
-        if (interaction.isModalSubmit()) {
-            if (interaction.customId === 'settings_buy_modal') {
-                await settingsHandler.handleBuyModalSubmit(interaction);
-                return;
-            }
-            
-            if (interaction.customId === 'settings_sell_modal') {
-                await settingsHandler.handleSellModalSubmit(interaction);
-                return;
-            }
-        }
-        
-        // --- REGULAR HANDLERS ---
-        // Rest of your existing handlers
-
-        // Log all interactions for debugging
+        // Debug logging for all interactions
         if (interaction.isButton()) {
             console.log(`[DEBUG] Button interaction: ${interaction.customId}`);
         } else if (interaction.isModalSubmit()) {
@@ -152,83 +57,70 @@ export async function handleApplicationInteractions(interaction) {
             console.log(`[DEBUG] Available fields: ${Array.from(interaction.fields.fields.keys()).join(', ')}`);
         }
         
-        // DIRECT SETTINGS HANDLERS - Process with highest priority
+        // SETTINGS HANDLERS - highest priority
+        // These handle both button clicks and modal submissions related to settings
+        
         if (interaction.isButton()) {
+            // Handle settings buttons
             if (interaction.customId === 'trade_settings' || interaction.customId === 'settings') {
+                console.log('[DEBUG] Using settings button handler');
                 await handleSettingsButton(interaction);
                 return;
             }
             
             if (interaction.customId === 'direct_set_buy') {
+                console.log('[DEBUG] Using buy settings button handler');
                 await handleSetBuyButton(interaction);
                 return;
             }
             
             if (interaction.customId === 'direct_set_sell') {
+                console.log('[DEBUG] Using sell settings button handler');
                 await handleSetSellButton(interaction);
+                return;
+            }
+            
+            if (interaction.customId === 'set_quick_buy') {
+                console.log('[DEBUG] Using quick buy button handler');
+                await showQuickBuyModal(interaction);
+                return;
+            }
+            
+            if (interaction.customId === 'set_quick_sell') {
+                console.log('[DEBUG] Using quick sell button handler');
+                await showQuickSellModal(interaction);
                 return;
             }
         }
         
         if (interaction.isModalSubmit()) {
+            // Handle settings modal submissions
             if (interaction.customId === 'direct_buy_modal') {
+                console.log('[DEBUG] Processing direct buy modal submission');
                 await handleBuyModalSubmit(interaction);
                 return;
             }
             
             if (interaction.customId === 'direct_sell_modal') {
+                console.log('[DEBUG] Processing direct sell modal submission');
                 await handleSellModalSubmit(interaction);
                 return;
             }
-        }
-        
-        // STANDALONE SETTINGS HANDLER - Process these first with highest priority
-        if (interaction.customId === 'trade_settings' || interaction.customId === 'settings') {
-            console.log('[SETTINGS] Displaying settings dashboard');
-            await standaloneSettings.displayDashboard(interaction);
-            return;
-        }
-        
-        if (interaction.customId === 'standalone_quick_buy_button') {
-            console.log('[SETTINGS] Opening buy settings modal');
-            await standaloneSettings.showBuyModal(interaction);
-            return;
-        }
-        
-        if (interaction.customId === 'standalone_quick_sell_button') {
-            console.log('[SETTINGS] Opening sell settings modal');
-            await standaloneSettings.showSellModal(interaction);
-            return;
-        }
-        
-        if (interaction.customId === 'standalone_buy_modal') {
-            console.log('[SETTINGS] Processing buy settings submission');
-            await standaloneSettings.handleBuySubmit(interaction);
-            return;
-        }
-        
-        if (interaction.customId === 'standalone_sell_modal') {
-            console.log('[SETTINGS] Processing sell settings submission');
-            await standaloneSettings.handleSellSubmit(interaction);
-            return;
-        }
-        
-        // General handler - only reached if not a settings interaction
-        if (interaction.isModalSubmit()) {
-            console.log(`[DEBUG] Processing modal submission: ${interaction.customId}`);
             
-            // Handle existing modals
+            if (interaction.customId === 'quick_buy_modal') {
+                console.log('[DEBUG] Processing quick buy modal submission');
+                await handleQuickBuySubmission(interaction);
+                return;
+            }
+            
+            if (interaction.customId === 'quick_sell_modal') {
+                console.log('[DEBUG] Processing quick sell modal submission');
+                await handleQuickSellSubmission(interaction);
+                return;
+            }
+            
+            // All other modal submissions
             switch (interaction.customId) {
-                case 'quick_buy_modal':
-                    console.log('[DEBUG] Routing to handleQuickBuySubmission');
-                    await handleQuickBuySubmission(interaction);
-                    return;
-                
-                case 'quick_sell_modal':
-                    console.log('[DEBUG] Routing to handleQuickSellSubmission');
-                    await handleQuickSellSubmission(interaction);
-                    return;
-                
                 case 'token_address_modal':
                 case 'token_address_input_modal':
                     console.log('[DEBUG] Routing to handleTokenAddressSubmit');
@@ -246,10 +138,8 @@ export async function handleApplicationInteractions(interaction) {
             }
         }
         
+        // Handle all other button interactions
         if (interaction.isButton()) {
-            console.log(`[DEBUG] Processing button interaction: ${interaction.customId}`);
-            
-            // Handle existing buttons
             switch (interaction.customId) {
                 case 'applications':
                     await sendApplicationMenu(interaction);
@@ -337,18 +227,6 @@ export async function handleApplicationInteractions(interaction) {
                 case 'back_to_applications':
                     await sendApplicationMenu(interaction);
                     break;
-
-                case 'trade_settings':
-                    await handleTradeSettings(interaction);
-                    return;
-
-                case 'set_quick_buy':
-                    await showQuickBuyModal(interaction);
-                    return;
-
-                case 'set_quick_sell':
-                    await showQuickSellModal(interaction);
-                    return;
                     
                 default:
                     // Handle token selection buttons
