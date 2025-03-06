@@ -31,23 +31,157 @@ import {
     handleBackToSpotTrading
 } from '../../applications/chains/solana/spotTrading/solSpotTrading.mjs';
 
-// Import the simplified settings handlers
-import {
-    showSimpleQuickBuyModal,
-    handleSimpleQuickBuySubmit,
-    showSimpleQuickSellModal,
-    handleSimpleQuickSellSubmit,
-    showSimpleSettingsDashboard
-} from '../../applications/chains/solana/spotTrading/actions/simplifiedSettings.mjs';
-
 // Import the standalone settings module
 import { standaloneSettings } from '../../applications/chains/solana/spotTrading/actions/standaloneSettings.mjs';
+
+// Import direct settings handlers
+import { 
+    handleSettingsButton, 
+    handleSetBuyButton, 
+    handleSetSellButton,
+    handleBuyModalSubmit,
+    handleSellModalSubmit
+} from '../../applications/chains/solana/spotTrading/actions/directSettings.mjs';
+
+// Import the simple settings handler
+import { settingsHandler } from '../utils/settingsHandler.mjs';
 
 /**
  * Handle application interactions
  */
 export async function handleApplicationInteractions(interaction) {
     try {
+        // Add detailed logging for modal submissions to help diagnose issues
+        if (interaction.isModalSubmit()) {
+            console.log(`[DEBUG] Processing modal submission: ${interaction.customId}`);
+            console.log(`[DEBUG] Available fields:`, Array.from(interaction.fields.fields.keys()));
+        }
+        
+        // Handle button interactions
+        if (interaction.isButton()) {
+            // ... existing button handling code ...
+            
+            // Special case for settings button - make sure we're handling it correctly
+            if (interaction.customId === 'trade_settings') {
+                console.log('[DEBUG] Trade settings button clicked');
+                await handleTradeSettings(interaction);
+                return;
+            }
+            
+            if (interaction.customId === 'set_quick_buy') {
+                console.log('[DEBUG] Set quick buy button clicked');
+                await showQuickBuyModal(interaction);
+                return;
+            }
+            
+            if (interaction.customId === 'set_quick_sell') {
+                console.log('[DEBUG] Set quick sell button clicked');
+                await showQuickSellModal(interaction);
+                return;
+            }
+            
+            // ... rest of button handling ...
+        }
+        
+        // Handle modal submissions - make sure we're handling the quick buy/sell modals correctly
+        if (interaction.isModalSubmit()) {
+            // Direct access to modal fields for debugging purposes
+            console.log(`[DEBUG] Modal submission fields:`, 
+                Array.from(interaction.fields.fields.entries())
+                    .map(([id, field]) => `${id}: ${field.value}`));
+            
+            if (interaction.customId === 'quick_buy_modal') {
+                console.log('[DEBUG] Quick buy modal submitted');
+                // Call the handler directly without any wrapping
+                await handleQuickBuySubmission(interaction);
+                return;
+            }
+            
+            if (interaction.customId === 'quick_sell_modal') {
+                console.log('[DEBUG] Quick sell modal submitted');
+                // Call the handler directly without any wrapping
+                await handleQuickSellSubmission(interaction);
+                return;
+            }
+            
+            // ... rest of modal handling ...
+        }
+        
+        // --- SETTINGS HANDLERS ---
+        // These come first to ensure they take priority
+        
+        // Handle settings buttons
+        if (interaction.isButton()) {
+            if (interaction.customId === 'trade_settings' || interaction.customId === 'settings') {
+                await settingsHandler.showSettings(interaction);
+                return;
+            }
+            
+            if (interaction.customId === 'settings_edit_buy') {
+                await settingsHandler.showBuyAmountsModal(interaction);
+                return;
+            }
+            
+            if (interaction.customId === 'settings_edit_sell') {
+                await settingsHandler.showSellAmountsModal(interaction);
+                return;
+            }
+        }
+        
+        // Handle settings modals
+        if (interaction.isModalSubmit()) {
+            if (interaction.customId === 'settings_buy_modal') {
+                await settingsHandler.handleBuyModalSubmit(interaction);
+                return;
+            }
+            
+            if (interaction.customId === 'settings_sell_modal') {
+                await settingsHandler.handleSellModalSubmit(interaction);
+                return;
+            }
+        }
+        
+        // --- REGULAR HANDLERS ---
+        // Rest of your existing handlers
+
+        // Log all interactions for debugging
+        if (interaction.isButton()) {
+            console.log(`[DEBUG] Button interaction: ${interaction.customId}`);
+        } else if (interaction.isModalSubmit()) {
+            console.log(`[DEBUG] Modal submission: ${interaction.customId}`);
+            console.log(`[DEBUG] Available fields: ${Array.from(interaction.fields.fields.keys()).join(', ')}`);
+        }
+        
+        // DIRECT SETTINGS HANDLERS - Process with highest priority
+        if (interaction.isButton()) {
+            if (interaction.customId === 'trade_settings' || interaction.customId === 'settings') {
+                await handleSettingsButton(interaction);
+                return;
+            }
+            
+            if (interaction.customId === 'direct_set_buy') {
+                await handleSetBuyButton(interaction);
+                return;
+            }
+            
+            if (interaction.customId === 'direct_set_sell') {
+                await handleSetSellButton(interaction);
+                return;
+            }
+        }
+        
+        if (interaction.isModalSubmit()) {
+            if (interaction.customId === 'direct_buy_modal') {
+                await handleBuyModalSubmit(interaction);
+                return;
+            }
+            
+            if (interaction.customId === 'direct_sell_modal') {
+                await handleSellModalSubmit(interaction);
+                return;
+            }
+        }
+        
         // STANDALONE SETTINGS HANDLER - Process these first with highest priority
         if (interaction.customId === 'trade_settings' || interaction.customId === 'settings') {
             console.log('[SETTINGS] Displaying settings dashboard');
