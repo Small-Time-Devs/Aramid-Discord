@@ -6,8 +6,9 @@ import {
     showQuickBuyModal,
     showQuickSellModal,
     handleQuickBuySubmission,
-    handleQuickSellSubmission
-} from './actions/settings.mjs';
+    handleQuickSellSubmission,
+    handleBackToSpotTrading
+} from './actions/settingsConfig.mjs';
 
 import {
     handleTokenAddressInput,
@@ -27,8 +28,7 @@ import {
     handlePriorityFeeSelection,
     handleExecutePurchase,
     handleBackToPurchaseConfig,
-    handleBackToBuyOptions,
-    handleBackToSpotTrading
+    handleBackToBuyOptions
 } from './actions/purchaseConfig.mjs';
 
 // Re-export everything for backward compatibility

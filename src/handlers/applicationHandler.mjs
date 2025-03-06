@@ -2,23 +2,15 @@ import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilde
 import { sendApplicationMenu, sendChainSelectionForApp } from '../utils/discordMessages.mjs';
 import { checkUserWallet } from '../db/dynamo.mjs';
 
-// Import all handlers directly from settings.mjs (not through directSettings.mjs which doesn't exist)
+// Update imports to reference settingsConfig.mjs instead of settings.mjs
 import { 
     handleTradeSettings, 
     showQuickBuyModal, 
     showQuickSellModal,
     handleQuickBuySubmission, 
     handleQuickSellSubmission,
-    // Import the functions that were in directSettings directly from settings.mjs
-    handleSettingsButton, 
-    handleSetBuyButton, 
-    handleSetSellButton,
-    handleBuyModalSubmit,
-    handleSellModalSubmit,
-    // Import the exported objects for backward compatibility
-    directSettings,
-    standaloneSettings
-} from '../../applications/chains/solana/spotTrading/actions/settings.mjs';
+    handleBackToSpotTrading
+} from '../../applications/chains/solana/spotTrading/actions/settingsConfig.mjs';
 
 // Import other handlers from solSpotTrading.mjs
 import { 
@@ -37,12 +29,8 @@ import {
     handlePriorityFeeSelection,
     handleExecutePurchase,
     handleBackToPurchaseConfig,
-    handleBackToBuyOptions,
-    handleBackToSpotTrading
+    handleBackToBuyOptions
 } from '../../applications/chains/solana/spotTrading/solSpotTrading.mjs';
-
-// Remove any imports from non-existent files
-// Remove: import { settingsHandler } from '../utils/settingsHandler.mjs';
 
 /**
  * Handle application interactions
@@ -64,19 +52,7 @@ export async function handleApplicationInteractions(interaction) {
             // Handle settings buttons
             if (interaction.customId === 'trade_settings' || interaction.customId === 'settings') {
                 console.log('[DEBUG] Using settings button handler');
-                await handleSettingsButton(interaction);
-                return;
-            }
-            
-            if (interaction.customId === 'direct_set_buy') {
-                console.log('[DEBUG] Using buy settings button handler');
-                await handleSetBuyButton(interaction);
-                return;
-            }
-            
-            if (interaction.customId === 'direct_set_sell') {
-                console.log('[DEBUG] Using sell settings button handler');
-                await handleSetSellButton(interaction);
+                await handleTradeSettings(interaction);
                 return;
             }
             
@@ -95,18 +71,6 @@ export async function handleApplicationInteractions(interaction) {
         
         if (interaction.isModalSubmit()) {
             // Handle settings modal submissions
-            if (interaction.customId === 'direct_buy_modal') {
-                console.log('[DEBUG] Processing direct buy modal submission');
-                await handleBuyModalSubmit(interaction);
-                return;
-            }
-            
-            if (interaction.customId === 'direct_sell_modal') {
-                console.log('[DEBUG] Processing direct sell modal submission');
-                await handleSellModalSubmit(interaction);
-                return;
-            }
-            
             if (interaction.customId === 'quick_buy_modal') {
                 console.log('[DEBUG] Processing quick buy modal submission');
                 await handleQuickBuySubmission(interaction);
