@@ -53,51 +53,44 @@ export async function handleApplicationInteractions(interaction) {
             console.log(`[DEBUG] Modal values: ${JSON.stringify(fieldValues)}`);
         }
         
-        // Prioritize modal handling, it comes before buttons
+        // IMPORTANT: Handle modals first, before any other processing
         if (interaction.isModalSubmit()) {
-            console.log(`[MODAL ROUTER] Determining handler for modal: ${interaction.customId}`);
+            console.log(`[MODAL DEBUG] Routing modal: ${interaction.customId}`);
             
-            // Handle settings modal submissions
-            if (interaction.customId === 'quick_buy_modal') {
-                console.log('[MODAL ROUTER] Routing quick_buy_modal to handleQuickBuySubmission');
-                await handleQuickBuySubmission(interaction);
-                return;
-            }
-            
-            if (interaction.customId === 'quick_sell_modal') {
-                console.log('[MODAL ROUTER] Routing quick_sell_modal to handleQuickSellSubmission');
-                await handleQuickSellSubmission(interaction);
-                return;
-            }
-            
-            // Token and purchase modals
-            switch (interaction.customId) {
+            // Direct routing based on modal ID without any nested conditions
+            switch(interaction.customId) {
+                case 'quick_buy_modal':
+                    console.log('[MODAL DEBUG] Processing quick buy modal');
+                    await handleQuickBuySubmission(interaction);
+                    return;
+                    
+                case 'quick_sell_modal':
+                    console.log('[MODAL DEBUG] Processing quick sell modal');
+                    await handleQuickSellSubmission(interaction);
+                    return;
+                    
                 case 'token_address_modal':
                 case 'token_address_input_modal':
-                    console.log('[MODAL ROUTER] Routing token address modal to handleTokenAddressSubmit');
+                    console.log('[MODAL DEBUG] Processing token address modal');
                     await handleTokenAddressSubmit(interaction);
                     return;
-                
+                    
                 case 'purchase_amount_modal':
-                    console.log('[MODAL ROUTER] Routing purchase amount modal to handlePurchaseAmountSubmit');
+                    console.log('[MODAL DEBUG] Processing purchase amount modal');
                     await handlePurchaseAmountSubmit(interaction);
                     return;
-                
+                    
                 default:
-                    console.log(`[MODAL ROUTER] ⚠️ Unhandled modal submission: ${interaction.customId}`);
-                    // Last resort handler for modals
-                    await interaction.reply({ 
-                        content: "This modal submission wasn't recognized. Please try again.", 
-                        ephemeral: true 
+                    console.log(`[MODAL DEBUG] Unhandled modal: ${interaction.customId}`);
+                    await interaction.reply({
+                        content: `Unknown form type: ${interaction.customId}`,
+                        ephemeral: true
                     });
-                    break;
+                    return;
             }
-            
-            // If we reach here, the modal wasn't handled, so return early
-            return;
         }
         
-        // Button handling comes after modals
+        // Now handle buttons and other interaction types
         if (interaction.isButton()) {
             // Handle settings buttons
             if (interaction.customId === 'trade_settings' || interaction.customId === 'settings') {

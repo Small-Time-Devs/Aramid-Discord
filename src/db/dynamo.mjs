@@ -17,13 +17,17 @@ const client = new DynamoDBClient({
     }
 });
 
+// Update marshalling options to prevent number conversion for large IDs
 const docClient = DynamoDBDocumentClient.from(client, {
     marshallOptions: {
+        convertEmptyValues: false,
         convertClassInstanceToMap: true,
         removeUndefinedValues: true,
+        // This is important: prevent conversion of strings that look like numbers
+        convertStringsToNumbers: false
     },
     unmarshallOptions: {
-        wrapNumbers: false,
+        wrapNumbers: false, // Consider changing this to true if needed
     },
 });
 
@@ -448,18 +452,20 @@ export async function registerDiscordUser(userId, username, referredBy = '202145
  */
 export async function getTradeSettings(userId) {
     try {
-        console.log(`Fetching trade settings for user: ${userId}`);
+        // Always ensure userId is a string
+        const userIdString = String(userId);
+        console.log(`Fetching trade settings for user: ${userIdString}`);
         
         const result = await docClient.send(new GetCommand({
             TableName: 'AramidDiscord-Settings',
-            Key: { userID: userId.toString() }
+            Key: { userID: userIdString }
         }));
         
         if (result.Item) {
-            console.log(`Found settings for user ${userId}`);
+            console.log(`Found settings for user ${userIdString}`);
             return result.Item;
         } else {
-            console.log(`No settings found for user ${userId}, returning default settings`);
+            console.log(`No settings found for user ${userIdString}, returning default settings`);
             // Return default settings if none are found
             return {
                 minQuickBuy: 0.1,
@@ -484,10 +490,12 @@ export async function getTradeSettings(userId) {
  */
 export async function saveTradeSettings(userId, newSettings) {
     try {
-        console.log(`Saving trade settings for user ${userId}:`, newSettings);
+        // Always ensure userId is a string to avoid type issues
+        const userIdString = String(userId);
+        console.log(`Saving trade settings for user ${userIdString}:`, newSettings);
         
         // Get existing settings first
-        const existingSettings = await getTradeSettings(userId) || {};
+        const existingSettings = await getTradeSettings(userIdString) || {};
         
         // Merge existing with new settings
         const settings = {
@@ -495,23 +503,31 @@ export async function saveTradeSettings(userId, newSettings) {
             ...newSettings
         };
 
-        // Ensure all values are properly formatted as numbers
+        // Ensure all numeric values are properly parsed
         for (const key in settings) {
-            if (typeof settings[key] === 'string' && !isNaN(parseFloat(settings[key]))) {
+            if (key !== 'userID' && typeof settings[key] === 'string' && !isNaN(parseFloat(settings[key]))) {
                 settings[key] = parseFloat(settings[key]);
             }
         }
 
+        // Create a clean object for DynamoDB without any risk of type confusion
+        const itemToSave = {
+            userID: userIdString, // Explicitly a string
+            ...settings,
+            updatedAt: new Date().toISOString()
+        };
+
+        // Delete any problematic fields
+        delete itemToSave.userId; // Ensure no mixed case variants exist
+
+        console.log('Final item being saved to DynamoDB:', JSON.stringify(itemToSave));
+
         await docClient.send(new PutCommand({
             TableName: 'AramidDiscord-Settings',
-            Item: {
-                userID: userId.toString(),
-                ...settings,
-                updatedAt: new Date().toISOString()
-            }
+            Item: itemToSave
         }));
 
-        console.log(`Trade settings saved for user ${userId}:`, settings);
+        console.log(`Trade settings saved successfully for user ${userIdString}`);
         return true;
     } catch (error) {
         console.error(`Error saving trade settings for user ${userId}:`, error);

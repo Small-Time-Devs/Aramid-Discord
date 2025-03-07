@@ -1,11 +1,14 @@
 import { 
+    EmbedBuilder,
     ModalBuilder, 
     TextInputBuilder, 
     TextInputStyle, 
-    ActionRowBuilder
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle
 } from 'discord.js';
 import { getTradeSettings, saveTradeSettings } from '../../../../../src/db/dynamo.mjs';
-import { showTradeSettingsMenu, showSettingsSuccessMessage } from '../ui/settingsConfig.mjs';
+import { showTradeSettingsMenu } from '../ui/settingsConfig.mjs';
 import { showSolanaSpotTradingMenu } from '../ui/dashboard.mjs';
 
 /**
@@ -29,31 +32,26 @@ export async function handleTradeSettings(interaction) {
 }
 
 /**
- * Show quick buy settings modal - ensuring proper naming consistency
+ * Show quick buy settings modal - using the technique from your original code
  */
 export async function showQuickBuyModal(interaction) {
     try {
-        console.log('🔍 [SETTINGS] Opening quick buy modal for user:', interaction.user.id);
+        console.log('Opening quick buy settings modal...');
+        
         const userId = interaction.user.id;
-        
-        // Get current settings to pre-fill
-        console.log('🔍 [SETTINGS] Fetching current settings for pre-filling modal');
         const settings = await getTradeSettings(userId);
-        console.log('🔍 [SETTINGS] Retrieved settings:', JSON.stringify(settings));
         
-        // Ensure settings values are properly formatted for display in the modal
+        // Get default values from settings
         const minBuyStr = settings.minQuickBuy ? settings.minQuickBuy.toString() : '0.1';
         const medBuyStr = settings.mediumQuickBuy ? settings.mediumQuickBuy.toString() : '0.5';
         const largeBuyStr = settings.largeQuickBuy ? settings.largeQuickBuy.toString() : '1.0';
         
-        console.log(`🔍 [SETTINGS] Modal pre-fill values: min=${minBuyStr}, med=${medBuyStr}, large=${largeBuyStr}`);
-        
-        // Important: Keep this modal ID consistent with what your interaction handler expects
+        // Create modal
         const modal = new ModalBuilder()
             .setCustomId('quick_buy_modal')
             .setTitle('Set Quick Buy Amounts');
 
-        // Important: Keep these input IDs consistent with what your handler expects
+        // Add components to modal
         const minInput = new TextInputBuilder()
             .setCustomId('min_buy')
             .setLabel('Minimum Buy Amount (SOL)')
@@ -78,25 +76,112 @@ export async function showQuickBuyModal(interaction) {
             .setValue(largeBuyStr)
             .setRequired(true);
 
-        // Wrap each input in its own ActionRow - this is important!
-        const firstRow = new ActionRowBuilder().addComponents(minInput);
-        const secondRow = new ActionRowBuilder().addComponents(medInput);
-        const thirdRow = new ActionRowBuilder().addComponents(largeInput);
-        
-        modal.addComponents(firstRow, secondRow, thirdRow);
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(minInput),
+            new ActionRowBuilder().addComponents(medInput),
+            new ActionRowBuilder().addComponents(largeInput)
+        );
 
-        console.log('🔍 [SETTINGS] Prepared modal with ID:', modal.data.custom_id);
-        console.log('🔍 [SETTINGS] Modal component count:', modal.components.length);
-        console.log('🔍 [SETTINGS] Modal components:', JSON.stringify(modal.components.map(c => c.components[0].data)));
-        
-        // This is how you properly display a modal per the documentation
-        console.log('🔍 [SETTINGS] Attempting to show modal to user');
+        // Show the modal
         await interaction.showModal(modal);
-        console.log('🔍 [SETTINGS] Modal successfully shown to user');
+        
+        // Wait for modal submission using the technique from your original code
+        try {
+            console.log('Waiting for modal submission...');
+            
+            // Note: This will only work if the code is running in an environment 
+            // where awaitModalSubmit is supported (like using the client.on method)
+            const modalSubmitInteraction = await interaction.awaitModalSubmit({
+                filter: (i) => i.customId === 'quick_buy_modal' && i.user.id === interaction.user.id,
+                time: 60000 // 1 minute timeout
+            });
+            
+            console.log('Modal submission received!');
+            
+            // Get values from modal
+            const minBuy = parseFloat(modalSubmitInteraction.fields.getTextInputValue('min_buy'));
+            const medBuy = parseFloat(modalSubmitInteraction.fields.getTextInputValue('med_buy'));
+            const largeBuy = parseFloat(modalSubmitInteraction.fields.getTextInputValue('large_buy'));
+            
+            console.log(`Values from modal: min=${minBuy}, med=${medBuy}, large=${largeBuy}`);
+            
+            // Validate inputs
+            if (isNaN(minBuy) || isNaN(medBuy) || isNaN(largeBuy)) {
+                await modalSubmitInteraction.reply({
+                    content: '❌ Please enter valid numbers for all fields.',
+                    ephemeral: true
+                });
+                return;
+            }
+            
+            if (minBuy <= 0 || medBuy <= 0 || largeBuy <= 0) {
+                await modalSubmitInteraction.reply({
+                    content: '❌ All values must be greater than zero.',
+                    ephemeral: true
+                });
+                return;
+            }
+            
+            // Save settings to database
+            await saveTradeSettings(interaction.user.id, {
+                minQuickBuy: minBuy,
+                mediumQuickBuy: medBuy,
+                largeQuickBuy: largeBuy
+            });
+            
+            console.log('Settings saved successfully');
+            
+            // Send success message directly (as in your original code)
+            const embed = new EmbedBuilder()
+                .setTitle('✅ Settings Updated')
+                .setDescription('Your quick buy settings have been saved')
+                .setColor(0x00FF00)
+                .addFields({
+                    name: '📈 Quick Buy Amounts (SOL)',
+                    value: [
+                        `Min: ${minBuy}`,
+                        `Medium: ${medBuy}`,
+                        `Large: ${largeBuy}`
+                    ].join('\n'),
+                    inline: true
+                });
+                
+            const row = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('set_quick_sell')
+                        .setLabel('Set Quick Sell')
+                        .setStyle(ButtonStyle.Danger),
+                    new ButtonBuilder()
+                        .setCustomId('back_to_spot_trading')
+                        .setLabel('Back')
+                        .setStyle(ButtonStyle.Secondary)
+                );
+            
+            await modalSubmitInteraction.reply({
+                embeds: [embed],
+                components: [row],
+                ephemeral: true
+            });
+            
+        } catch (submitError) {
+            console.error('Modal submission error:', submitError);
+            
+            // This error usually means the modal timed out or was never submitted
+            if (submitError.code === 'INTERACTION_COLLECTOR_ERROR') {
+                console.log('Modal timed out or was never submitted');
+                return;
+            }
+            
+            // Handle any other errors
+            await interaction.followUp({
+                content: `❌ Failed to save settings: ${submitError.message}`,
+                ephemeral: true
+            });
+        }
         
     } catch (error) {
-        console.error('❌ [SETTINGS ERROR] Error showing quick buy modal:', error);
-        console.error('❌ [SETTINGS ERROR] Error stack:', error.stack);
+        console.error('Error showing quick buy modal:', error);
         await interaction.reply({
             content: `❌ Error showing settings form: ${error.message}. Please try again.`,
             ephemeral: true
@@ -105,23 +190,21 @@ export async function showQuickBuyModal(interaction) {
 }
 
 /**
- * Show quick sell settings modal
+ * Show quick sell settings modal - using the technique from your original code
  */
 export async function showQuickSellModal(interaction) {
     try {
-        console.log('Opening quick sell settings modal');
-        const userId = interaction.user.id;
+        console.log('Opening quick sell settings modal...');
         
-        // Get current settings to pre-fill
+        const userId = interaction.user.id;
         const settings = await getTradeSettings(userId);
         
-        // Ensure settings values are properly formatted for display in the modal
+        // Get default values from settings
         const minSellStr = settings.minQuickSell ? settings.minQuickSell.toString() : '10';
         const medSellStr = settings.mediumQuickSell ? settings.mediumQuickSell.toString() : '50';
         const largeSellStr = settings.largeQuickSell ? settings.largeQuickSell.toString() : '100';
         
-        console.log(`Pre-filling modal with values: min=${minSellStr}, med=${medSellStr}, large=${largeSellStr}`);
-
+        // Create modal
         const modal = new ModalBuilder()
             .setCustomId('quick_sell_modal')
             .setTitle('Set Quick Sell Amounts');
@@ -151,15 +234,113 @@ export async function showQuickSellModal(interaction) {
             .setValue(largeSellStr)
             .setRequired(true);
 
-        // Add components to the modal
-        const firstRow = new ActionRowBuilder().addComponents(minSellInput);
-        const secondRow = new ActionRowBuilder().addComponents(medSellInput);
-        const thirdRow = new ActionRowBuilder().addComponents(largeSellInput);
-        
-        modal.addComponents(firstRow, secondRow, thirdRow);
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(minSellInput),
+            new ActionRowBuilder().addComponents(medSellInput),
+            new ActionRowBuilder().addComponents(largeSellInput)
+        );
 
-        console.log('Showing modal with ID:', modal.data.custom_id);
+        // Show the modal
         await interaction.showModal(modal);
+        
+        // Wait for modal submission
+        try {
+            console.log('Waiting for modal submission...');
+            
+            const modalSubmitInteraction = await interaction.awaitModalSubmit({
+                filter: (i) => i.customId === 'quick_sell_modal' && i.user.id === interaction.user.id,
+                time: 60000 // 1 minute timeout
+            });
+            
+            console.log('Modal submission received!');
+            
+            // Get values from modal
+            const minSell = parseFloat(modalSubmitInteraction.fields.getTextInputValue('min_sell'));
+            const medSell = parseFloat(modalSubmitInteraction.fields.getTextInputValue('med_sell'));
+            const largeSell = parseFloat(modalSubmitInteraction.fields.getTextInputValue('large_sell'));
+            
+            console.log(`Values from modal: min=${minSell}, med=${medSell}, large=${largeSell}`);
+            
+            // Validate inputs
+            if (isNaN(minSell) || isNaN(medSell) || isNaN(largeSell)) {
+                await modalSubmitInteraction.reply({
+                    content: '❌ Please enter valid numbers for all fields.',
+                    ephemeral: true
+                });
+                return;
+            }
+            
+            if (minSell <= 0 || medSell <= 0 || largeSell <= 0) {
+                await modalSubmitInteraction.reply({
+                    content: '❌ All values must be greater than zero.',
+                    ephemeral: true
+                });
+                return;
+            }
+            
+            if (largeSell > 100) {
+                await modalSubmitInteraction.reply({
+                    content: '❌ Maximum sell percentage cannot exceed 100%.',
+                    ephemeral: true
+                });
+                return;
+            }
+            
+            // Save settings to database
+            await saveTradeSettings(interaction.user.id, {
+                minQuickSell: minSell,
+                mediumQuickSell: medSell,
+                largeQuickSell: largeSell
+            });
+            
+            console.log('Settings saved successfully');
+            
+            // Send success message directly
+            const embed = new EmbedBuilder()
+                .setTitle('✅ Settings Updated')
+                .setDescription('Your quick sell settings have been saved')
+                .setColor(0x00FF00)
+                .addFields({
+                    name: '📉 Quick Sell Amounts (% of tokens)',
+                    value: [
+                        `Min: ${minSell}%`,
+                        `Medium: ${medSell}%`,
+                        `Large: ${largeSell}%`
+                    ].join('\n'),
+                    inline: true
+                });
+                
+            const row = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('set_quick_buy')
+                        .setLabel('Set Quick Buy')
+                        .setStyle(ButtonStyle.Success),
+                    new ButtonBuilder()
+                        .setCustomId('back_to_spot_trading')
+                        .setLabel('Back')
+                        .setStyle(ButtonStyle.Secondary)
+                );
+            
+            await modalSubmitInteraction.reply({
+                embeds: [embed],
+                components: [row],
+                ephemeral: true
+            });
+            
+        } catch (submitError) {
+            console.error('Modal submission error:', submitError);
+            
+            if (submitError.code === 'INTERACTION_COLLECTOR_ERROR') {
+                console.log('Modal timed out or was never submitted');
+                return;
+            }
+            
+            await interaction.followUp({
+                content: `❌ Failed to save settings: ${submitError.message}`,
+                ephemeral: true
+            });
+        }
         
     } catch (error) {
         console.error('Error showing quick sell modal:', error);
@@ -171,126 +352,71 @@ export async function showQuickSellModal(interaction) {
 }
 
 /**
- * Handle quick buy settings submission - ensuring we properly handle the modal interaction
+ * Handle quick buy settings submission
+ * Note: This function is kept for backwards compatibility but isn't used in the awaitModalSubmit approach
  */
 export async function handleQuickBuySubmission(interaction) {
     try {
         const userId = interaction.user.id;
-        console.log('🔍 [SETTINGS] Processing buy settings submission for user:', userId);
-        console.log(`🔍 [SETTINGS] Modal ID: ${interaction.customId}`);
-        console.log(`🔍 [SETTINGS] Available fields: ${Array.from(interaction.fields.fields.keys()).join(', ')}`);
+        console.log('Processing buy settings submission for user:', userId);
+        console.log(`Modal ID: ${interaction.customId}`);
+        console.log(`Available fields: ${Array.from(interaction.fields.fields.keys()).join(', ')}`);
         
-        // Important: Verify fields exist before trying to access them
-        if (!interaction.fields.fields.has('min_buy') || 
-            !interaction.fields.fields.has('med_buy') || 
-            !interaction.fields.fields.has('large_buy')) {
-            
-            console.error('❌ [SETTINGS ERROR] Missing expected fields in modal submission');
-            console.log('❌ [SETTINGS ERROR] Fields received:', Array.from(interaction.fields.fields.keys()));
-            await interaction.reply({
-                content: '❌ Form submission error: Missing required fields. Expected min_buy, med_buy, and large_buy.',
-                ephemeral: true
-            });
-            return;
-        }
-        
-        // Get values from form - using proper error handling
-        console.log('🔍 [SETTINGS] Extracting form values');
+        // Get values from form
         const minBuyStr = interaction.fields.getTextInputValue('min_buy');
         const medBuyStr = interaction.fields.getTextInputValue('med_buy');
         const largeBuyStr = interaction.fields.getTextInputValue('large_buy');
         
-        console.log(`🔍 [SETTINGS] Buy values submitted as strings: min=${minBuyStr}, med=${medBuyStr}, large=${largeBuyStr}`);
+        console.log(`Buy values: min=${minBuyStr}, med=${medBuyStr}, large=${largeBuyStr}`);
         
-        // Parse values as floats with proper error handling
+        // Parse values
         const minBuy = parseFloat(minBuyStr);
         const medBuy = parseFloat(medBuyStr);
         const largeBuy = parseFloat(largeBuyStr);
         
-        console.log(`🔍 [SETTINGS] Buy values parsed as floats: min=${minBuy}, med=${medBuy}, large=${largeBuy}`);
-        
-        // Important: Properly acknowledge the interaction first, then do processing
-        // Use deferReply instead of editReply for initial interaction response
-        console.log('🔍 [SETTINGS] Deferring reply to prevent timeout');
-        await interaction.deferReply({ ephemeral: true });
-        console.log('🔍 [SETTINGS] Reply deferred successfully');
-        
         // Basic validation
-        console.log('🔍 [SETTINGS] Validating input values');
         if (isNaN(minBuy) || isNaN(medBuy) || isNaN(largeBuy)) {
-            console.log('❌ [SETTINGS ERROR] Invalid number inputs detected');
-            await interaction.editReply({
-                content: '❌ Please enter valid numbers',
+            await interaction.reply({
+                content: '❌ Please enter valid numbers for all fields.',
                 ephemeral: true
             });
             return;
         }
         
         if (minBuy <= 0 || medBuy <= 0 || largeBuy <= 0) {
-            console.log('❌ [SETTINGS ERROR] Negative or zero values detected');
-            await interaction.editReply({
-                content: '❌ All values must be greater than zero',
+            await interaction.reply({
+                content: '❌ All values must be greater than zero.',
                 ephemeral: true
             });
             return;
         }
         
-        // Save settings - wrap in try/catch for better error reporting
-        try {
-            console.log('🔍 [SETTINGS] Saving settings to database');
-            console.log('🔍 [SETTINGS] Settings to save:', JSON.stringify({
-                minQuickBuy: minBuy,
-                mediumQuickBuy: medBuy,
-                largeQuickBuy: largeBuy
-            }));
-            
-            await saveTradeSettings(userId, {
-                minQuickBuy: minBuy,
-                mediumQuickBuy: medBuy,
-                largeQuickBuy: largeBuy
-            });
-            console.log('✅ [SETTINGS] Quick buy settings saved successfully');
-        } catch (saveError) {
-            console.error('❌ [SETTINGS ERROR] Error saving settings:', saveError);
-            console.error('❌ [SETTINGS ERROR] Error stack:', saveError.stack);
-            await interaction.editReply({
-                content: `❌ Failed to save settings: ${saveError.message}`,
-                ephemeral: true
-            });
-            return;
-        }
+        // Save settings
+        await saveTradeSettings(userId, {
+            minQuickBuy: minBuy,
+            mediumQuickBuy: medBuy,
+            largeQuickBuy: largeBuy
+        });
         
-        // Show success message with updated settings
-        try {
-            console.log('🔍 [SETTINGS] Fetching updated settings for confirmation message');
-            const settings = await getTradeSettings(userId);
-            console.log('🔍 [SETTINGS] Retrieved updated settings:', JSON.stringify(settings));
-            console.log('🔍 [SETTINGS] Showing success message');
-            await showSettingsSuccessMessage(interaction, settings, 'buy');
-            console.log('✅ [SETTINGS] Success message shown successfully');
-        } catch (displayError) {
-            console.error('❌ [SETTINGS ERROR] Error showing success message:', displayError);
-            console.error('❌ [SETTINGS ERROR] Error stack:', displayError.stack);
-            await interaction.editReply({
-                content: '✅ Settings saved successfully, but there was an error displaying the updated values.',
-                ephemeral: true
-            });
-        }
+        console.log('Quick buy settings saved successfully');
+        
+        // Direct reply with simple message
+        await interaction.reply({
+            content: `✅ Quick buy settings saved:\n• Min: ${minBuy} SOL\n• Medium: ${medBuy} SOL\n• Large: ${largeBuy} SOL`,
+            ephemeral: true
+        });
         
     } catch (error) {
-        console.error('❌ [SETTINGS ERROR] Unhandled error in quick buy submission:', error);
-        console.error('❌ [SETTINGS ERROR] Error stack:', error.stack);
+        console.error('Error handling quick buy submission:', error);
         
-        // Simple error response based on interaction state
-        if (interaction.deferred) {
-            await interaction.editReply({
-                content: `❌ Error saving settings: ${error.message}`,
+        if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({
+                content: `❌ Error saving settings: ${error.message}. Please try again.`,
                 ephemeral: true
             });
         } else {
-            // Important: Use reply for initial responses, not followUp
-            await interaction.reply({
-                content: `❌ Error saving settings: ${error.message}`,
+            await interaction.followUp({
+                content: `❌ Error saving settings: ${error.message}. Please try again.`,
                 ephemeral: true
             });
         }
@@ -299,6 +425,7 @@ export async function handleQuickBuySubmission(interaction) {
 
 /**
  * Handle quick sell settings submission
+ * Note: This function is kept for backwards compatibility but isn't used in the awaitModalSubmit approach
  */
 export async function handleQuickSellSubmission(interaction) {
     try {
@@ -312,38 +439,33 @@ export async function handleQuickSellSubmission(interaction) {
         const medSellStr = interaction.fields.getTextInputValue('med_sell');
         const largeSellStr = interaction.fields.getTextInputValue('large_sell');
         
-        console.log(`Sell values submitted as strings: min=${minSellStr}, med=${medSellStr}, large=${largeSellStr}`);
+        console.log(`Sell values: min=${minSellStr}, med=${medSellStr}, large=${largeSellStr}`);
         
-        // Parse values as floats with proper error handling
+        // Parse values
         const minSell = parseFloat(minSellStr);
         const medSell = parseFloat(medSellStr);
         const largeSell = parseFloat(largeSellStr);
         
-        console.log(`Sell values parsed as floats: min=${minSell}, med=${medSell}, large=${largeSell}`);
-        
-        // Defer reply to prevent timeout
-        await interaction.deferReply({ ephemeral: true });
-        
         // Basic validation
         if (isNaN(minSell) || isNaN(medSell) || isNaN(largeSell)) {
-            await interaction.editReply({
-                content: '❌ Please enter valid numbers',
+            await interaction.reply({
+                content: '❌ Please enter valid numbers for all fields.',
                 ephemeral: true
             });
             return;
         }
         
         if (minSell <= 0 || medSell <= 0 || largeSell <= 0) {
-            await interaction.editReply({
-                content: '❌ All values must be greater than zero',
+            await interaction.reply({
+                content: '❌ All values must be greater than zero.',
                 ephemeral: true
             });
             return;
         }
         
         if (largeSell > 100) {
-            await interaction.editReply({
-                content: '❌ Maximum sell percentage cannot exceed 100%',
+            await interaction.reply({
+                content: '❌ Maximum sell percentage cannot exceed 100%.',
                 ephemeral: true
             });
             return;
@@ -358,22 +480,23 @@ export async function handleQuickSellSubmission(interaction) {
         
         console.log('Quick sell settings saved successfully');
         
-        // Show success message with updated settings
-        const settings = await getTradeSettings(userId);
-        await showSettingsSuccessMessage(interaction, settings, 'sell');
+        // Direct reply with simple message
+        await interaction.reply({
+            content: `✅ Quick sell settings saved:\n• Min: ${minSell}%\n• Medium: ${medSell}%\n• Large: ${largeSell}%`,
+            ephemeral: true
+        });
         
     } catch (error) {
-        console.error('Error in quick sell submission:', error);
+        console.error('Error handling quick sell submission:', error);
         
-        // Simple error response
-        if (interaction.deferred) {
-            await interaction.editReply({
-                content: `❌ Error saving settings: ${error.message}`,
+        if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({
+                content: `❌ Error saving settings: ${error.message}. Please try again.`,
                 ephemeral: true
             });
         } else {
-            await interaction.reply({
-                content: `❌ Error saving settings: ${error.message}`,
+            await interaction.followUp({
+                content: `❌ Error saving settings: ${error.message}. Please try again.`,
                 ephemeral: true
             });
         }
