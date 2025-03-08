@@ -20,6 +20,10 @@ import {
 import { handleApplicationInteractions } from './src/handlers/applicationHandler.mjs';
 // Import the handleTokenAddressSubmit function properly
 import { handleTokenAddressSubmit } from './applications/chains/solana/spotTrading/solSpotTrading.mjs';
+// Fix the import for redirectToPersonalChannel
+// Make sure the path is correct
+import { redirectToPersonalChannel, handlePersonalChannelInteraction } from './src/handlers/userChannelHandler.mjs';
+import { showSolanaSpotTradingMenu } from './applications/chains/solana/spotTrading/ui/dashboard.mjs';
 
 dotenv.config();
 
@@ -171,6 +175,29 @@ client.on('interactionCreate', async (interaction) => {
         if (interaction.isButton()) {
             await handleApplicationInteractions(interaction);
         }
+
+        // Handle the "Get Started" button from main menu
+        if (interaction.isButton() && interaction.customId === 'create_personal_channel') {
+            console.log(`[DEBUG] User ${interaction.user.tag} clicked Get Started button`);
+            
+            try {
+                // Try the imported function first
+                if (typeof redirectToPersonalChannel === 'function') {
+                    await redirectToPersonalChannel(interaction);
+                } else {
+                    // If it's not defined, use the fallback
+                    console.warn('[WARN] Using fallback channel creation function');
+                    await fallbackRedirectToPersonalChannel(interaction);
+                }
+            } catch (channelError) {
+                console.error('[ERROR] Failed to create personal channel:', channelError);
+                await interaction.reply({
+                    content: 'Sorry, there was an error creating your personal channel. Please try again later.',
+                    ephemeral: true
+                });
+            }
+            return;
+        }
     } catch (error) {
         console.error('Interaction error:', error);
         // Attempt to reply if we haven't already
@@ -186,6 +213,59 @@ client.on('interactionCreate', async (interaction) => {
         }
     }
 });
+
+// Backup implementation in case the import fails
+async function fallbackRedirectToPersonalChannel(interaction) {
+    try {
+        console.log('[FALLBACK] Using fallback channel creation function');
+        await interaction.deferReply({ ephemeral: true });
+
+        // Use the direct import to ensure we get the function
+        const { getOrCreateUserChannel } = await import('./src/services/channelManager.mjs');
+        const userChannel = await getOrCreateUserChannel(interaction);
+
+        if (!userChannel) {
+            throw new Error('Failed to create channel');
+        }
+
+        const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = await import('discord.js');
+
+        const welcomeEmbed = new EmbedBuilder()
+            .setTitle('Welcome to Your Personal Trading Channel!')
+            .setDescription(`Hello ${interaction.user.toString()}, this is your dedicated channel for trading with Aramid Bot.`)
+            .setColor(0x0099FF)
+            .addFields(
+                { name: 'Privacy', value: 'Only you and server admins can see this channel.', inline: false },
+                { name: 'Get Started', value: 'Click the button below to start trading.', inline: false }
+            );
+
+        const startButton = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('start_trading')
+                    .setLabel('Start Trading')
+                    .setStyle(ButtonStyle.Success)
+            );
+
+        await userChannel.send({
+            content: `${interaction.user.toString()} Welcome to your personal trading channel!`,
+            embeds: [welcomeEmbed],
+            components: [startButton]
+        });
+
+        await interaction.editReply({
+            content: `I've created a personal trading channel for you: <#${userChannel.id}>. Please continue there!`,
+            ephemeral: true
+        });
+
+    } catch (error) {
+        console.error('[FALLBACK] Error in fallback channel creation:', error);
+        await interaction.reply({
+            content: `Sorry, I couldn't create your personal channel: ${error.message}. Please try again later.`,
+            ephemeral: true
+        });
+    }
+}
 
 // Slash command handler
 client.on('interactionCreate', async (interaction) => {

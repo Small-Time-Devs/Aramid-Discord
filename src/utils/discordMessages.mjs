@@ -401,85 +401,52 @@ export const sendStartupMessage = async (channel) => {
 
 // Update sendMainMenu to match sendStartupMessage
 export const sendMainMenu = async (channel) => {
+    const embed = new EmbedBuilder()
+        .setTitle('🤖 Crypto Research Assistant')
+        .setDescription('Your advanced cryptocurrency research and management companion')
+        .addFields(
+            {
+                name: '🔐 Security Features',
+                value: '• Two-Factor Authentication (2FA)\n• Secure wallet management\n• Protected transactions',
+                inline: true
+            },
+            {
+                name: '💰 Wallet Features',
+                value: '• Multi-chain support\n• Balance tracking\n• Transaction history\n• Secure transfers',
+                inline: true
+            },
+            {
+                name: '📊 Research Tools',
+                value: '• Token analysis\n• Market statistics\n• DeFi insights\n• Price tracking',
+                inline: true
+            },
+            {
+                name: '👤 Personal Channels',
+                value: 'Click "Get Started" below to create your own private trading channel!',
+                inline: false
+            }
+        )
+        .setColor(0x5865F2)
+        .setThumbnail('https://i.imgur.com/AfFp7pu.png')
+        .setFooter({
+            text: '24/7 Crypto Assistant | Version 1.0',
+            iconURL: 'https://i.imgur.com/AfFp7pu.png'
+        })
+        .setTimestamp();
+
+    // Create a single row with just a "Get Started" button
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId('create_personal_channel')
+                .setLabel('Get Started')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('🚀')
+        );
+
     return await channel.send({
-        embeds: [{
-            title: '🤖 Crypto Research Assistant',
-            description: 'Your advanced cryptocurrency research and management companion',
-            fields: [
-                {
-                    name: '🔐 Security Features',
-                    value: '• Two-Factor Authentication (2FA)\n• Secure wallet management\n• Protected transactions',
-                    inline: true
-                },
-                {
-                    name: '💰 Wallet Features',
-                    value: '• Multi-chain support\n• Balance tracking\n• Transaction history\n• Secure transfers',
-                    inline: true
-                },
-                {
-                    name: '📊 Research Tools',
-                    value: '• Token analysis\n• Market statistics\n• DeFi insights\n• Price tracking',
-                    inline: true
-                },
-                {
-                    name: '⚡ Quick Commands',
-                    value: '`!menu` - Show this menu\n`!help` - Show detailed help\n`!ping` - Check bot status',
-                    inline: false
-                },
-                {
-                    name: '🔰 Getting Started',
-                    value: 'New users should start with the Quick Start guide or Tutorial for a complete walkthrough.',
-                    inline: false
-                }
-            ],
-            color: 0x5865F2,
-            thumbnail: {
-                url: 'https://i.imgur.com/AfFp7pu.png'
-            },
-            footer: {
-                text: '24/7 Crypto Assistant | Version 1.0',
-                icon_url: 'https://i.imgur.com/AfFp7pu.png'
-            },
-            timestamp: new Date()
-        }],
-        components: [
-            new ActionRowBuilder()
-                .addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('quick_start')
-                        .setLabel('Quick Start')
-                        .setStyle(ButtonStyle.Primary)
-                        .setEmoji('🚀'),
-                    new ButtonBuilder()
-                        .setCustomId('applications')
-                        .setLabel('Applications')
-                        .setStyle(ButtonStyle.Primary)
-                        .setEmoji('🔧'),
-                    new ButtonBuilder()
-                        .setCustomId('view_wallet')
-                        .setLabel('View Wallet')
-                        .setStyle(ButtonStyle.Primary)
-                        .setEmoji('💼')
-                ),
-            new ActionRowBuilder()
-                .addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('show_tutorial')
-                        .setLabel('Tutorial')
-                        .setStyle(ButtonStyle.Secondary)
-                        .setEmoji('📚'),
-                    new ButtonBuilder()
-                        .setCustomId('settings')
-                        .setLabel('Settings')
-                        .setStyle(ButtonStyle.Secondary)
-                        .setEmoji('⚙️'),
-                    new ButtonBuilder()
-                        .setCustomId('help')
-                        .setLabel('Help')
-                        .setStyle(ButtonStyle.Secondary)
-                        .setEmoji('❓')
-                )
-        ]
+        embeds: [embed],
+        components: [row]
     });
 };
 

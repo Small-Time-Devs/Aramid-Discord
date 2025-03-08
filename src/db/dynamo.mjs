@@ -503,9 +503,15 @@ export async function saveTradeSettings(userId, newSettings) {
             ...newSettings
         };
 
+        // Ensure all IDs are stored as strings to avoid BigInt issues
+        if (settings.channelId) settings.channelId = String(settings.channelId);
+        if (settings.guildId) settings.guildId = String(settings.guildId);
+
         // Ensure all numeric values are properly parsed
         for (const key in settings) {
-            if (key !== 'userID' && typeof settings[key] === 'string' && !isNaN(parseFloat(settings[key]))) {
+            if (!['userID', 'channelId', 'guildId', 'channelName', 'updatedAt'].includes(key) && 
+                typeof settings[key] === 'string' && 
+                !isNaN(parseFloat(settings[key]))) {
                 settings[key] = parseFloat(settings[key]);
             }
         }
