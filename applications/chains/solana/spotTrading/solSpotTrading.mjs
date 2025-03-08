@@ -28,7 +28,8 @@ import {
     handlePriorityFeeSelection,
     handleExecutePurchase,
     handleBackToPurchaseConfig,
-    handleBackToBuyOptions
+    handleBackToBuyOptions,
+    handleQuickBuySelection  // Add this new import
 } from './actions/purchaseConfig.mjs';
 
 // Re-export everything for backward compatibility
@@ -54,7 +55,8 @@ export {
     handleExecutePurchase,
     handleBackToPurchaseConfig,
     handleBackToBuyOptions,
-    handleBackToSpotTrading
+    handleBackToSpotTrading,
+    handleQuickBuySelection  // Add this new export
 };
 
 // Export shared state that needs to be accessible across files

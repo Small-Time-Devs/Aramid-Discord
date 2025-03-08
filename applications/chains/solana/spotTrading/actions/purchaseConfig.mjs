@@ -22,6 +22,7 @@ import axios from 'axios';
 import { globalURLS, globalStaticConfig } from '../../../../../src/globals/global.mjs';
 // Import the transaction functions directly from dynamo.mjs
 import { checkUserWallet, getTransactionKeys, getTransactionReferral } from '../../../../../src/db/dynamo.mjs';
+import { getTradeSettings } from '../../../../../src/db/dynamo.mjs';
 
 /**
  * Handle set purchase amount button
@@ -556,6 +557,70 @@ export async function handleBackToSpotTrading(interaction) {
         console.error('Error returning to trading menu:', error);
         await interaction.followUp({
             content: '❌ Failed to return to trading menu. Please try again.',
+            ephemeral: true
+        });
+    }
+}
+
+/**
+ * Handle quick buy button clicks to set amount based on user settings
+ */
+export async function handleQuickBuySelection(interaction) {
+    try {
+        await interaction.deferUpdate();
+        
+        const userId = interaction.user.id;
+        const config = state.solanaBuyTokenConfig[userId];
+        const buttonType = interaction.customId.replace('quick_buy_', '');
+        
+        if (!config) {
+            await interaction.followUp({
+                content: '❌ Configuration not found. Please restart the purchase process.',
+                ephemeral: true
+            });
+            return;
+        }
+        
+        // Get the user's settings
+        const userSettings = await getTradeSettings(userId);
+        let amount = 0;
+        
+        // Set amount based on button clicked
+        switch (buttonType) {
+            case 'min':
+                amount = userSettings.minQuickBuy;
+                break;
+            case 'med':
+                amount = userSettings.mediumQuickBuy;
+                break;
+            case 'large':
+                amount = userSettings.largeQuickBuy;
+                break;
+            default:
+                amount = 0.01; // Default fallback
+        }
+        
+        // Update the configuration with the selected amount
+        config.amount = amount;
+        console.log(`Updated purchase amount to ${amount} SOL using quick buy button`);
+        
+        // Fetch token details for the updated display
+        const tokenDetails = await fetchTokenDetails(config.outputMint);
+        const tokenPrice = await fetchTokenPrice(config.outputMint);
+        
+        // Show the updated purchase config
+        await showTokenPurchaseConfig(interaction, tokenDetails, tokenPrice, true);
+        
+        // Add a followUp message confirming the action
+        await interaction.followUp({
+            content: `✅ Purchase amount set to ${amount} SOL using ${buttonType} quick buy setting`,
+            ephemeral: true
+        });
+        
+    } catch (error) {
+        console.error('Error handling quick buy selection:', error);
+        await interaction.followUp({
+            content: `❌ Error setting purchase amount: ${error.message}. Please try again.`,
             ephemeral: true
         });
     }

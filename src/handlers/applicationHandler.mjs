@@ -29,7 +29,8 @@ import {
     handlePriorityFeeSelection,
     handleExecutePurchase,
     handleBackToPurchaseConfig,
-    handleBackToBuyOptions
+    handleBackToBuyOptions,
+    handleQuickBuySelection  // Add this new import
 } from '../../applications/chains/solana/spotTrading/solSpotTrading.mjs';
 
 /**
@@ -108,6 +109,20 @@ export async function handleApplicationInteractions(interaction) {
             if (interaction.customId === 'set_quick_sell') {
                 console.log('[DEBUG] Routing to showQuickSellModal');
                 await showQuickSellModal(interaction);
+                return;
+            }
+            
+            // Quick buy buttons
+            if (interaction.customId.startsWith('quick_buy_')) {
+                console.log('[DEBUG] Routing to handleQuickBuySelection');
+                await handleQuickBuySelection(interaction);
+                return;
+            }
+            
+            // Add explicit logging for quick buy buttons to verify they're being recognized
+            if (interaction.customId.startsWith('quick_buy_')) {
+                console.log('[DEBUG] Detected quick buy button click:', interaction.customId);
+                await handleQuickBuySelection(interaction);
                 return;
             }
             
@@ -293,6 +308,14 @@ export async function handleApplicationInteractions(interaction) {
                 case 'back_to_applications':
                     await sendApplicationMenu(interaction);
                     break;
+                    
+                // Add explicit cases for quick buy buttons
+                case 'quick_buy_min':
+                case 'quick_buy_med':
+                case 'quick_buy_large':
+                    console.log('[DEBUG] Routing to handleQuickBuySelection via case statement');
+                    await handleQuickBuySelection(interaction);
+                    return;
                     
                 default:
                     // Handle token selection buttons
