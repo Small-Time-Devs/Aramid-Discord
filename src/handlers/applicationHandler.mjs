@@ -43,6 +43,8 @@ import {
     handleExecuteSell
 } from '../../applications/chains/solana/spotTrading/actions/tokenSelling.mjs';
 
+import { showMarketMakerDashboard } from '../../applications/chains/solana/marketMaking/ui/dashboard.mjs';
+
 /**
  * Handle application interactions
  */
@@ -277,8 +279,35 @@ export async function handleApplicationInteractions(interaction) {
                     break;
 
                 case 'market_maker':
-                    await sendChainSelectionForApp(interaction, 'market');
-                    break;
+                    console.log('[DEBUG] Handling market maker button click');
+            
+                    // Show chain selection for market making
+                    const embed = new EmbedBuilder()
+                        .setTitle('Select Blockchain for Market Making')
+                        .setDescription('Choose which blockchain you want to use for market making:')
+                        .setColor(0x6E0DAD); // Purple for market making
+                        
+                    const row = new ActionRowBuilder()
+                        .addComponents(
+                            new ButtonBuilder()
+                                .setCustomId('market_solana')
+                                .setLabel('Solana')
+                                .setStyle(ButtonStyle.Primary)
+                                .setEmoji('💫'),
+                            new ButtonBuilder()
+                                .setCustomId('back_to_applications')
+                                .setLabel('Back')
+                                .setStyle(ButtonStyle.Secondary)
+                                .setEmoji('↩️')
+                        );
+                        
+                    await interaction.reply({
+                        embeds: [embed],
+                        components: [row],
+                        ephemeral: true
+                    });
+                    
+                    return;
 
                 case 'spot_solana':
                     await showSolanaSpotTradingMenu(interaction);
@@ -332,14 +361,15 @@ export async function handleApplicationInteractions(interaction) {
                     break;
 
                 case 'market_solana':
-                    // Handle Solana market making
-                    await interaction.update({
-                        content: 'Starting Solana market making...',
-                        components: [],
-                        embeds: []
-                    });
-                    // Add logic to start Solana market making
-                    break;
+                    console.log('[DEBUG] Opening Solana market making dashboard');
+            
+                    // First defer the reply to prevent timeout
+                    await interaction.deferUpdate();
+                    
+                    // Show the market maker dashboard
+                    await showMarketMakerDashboard(interaction);
+                    
+                    return;
 
                 case 'market_xrp':
                     // Handle XRP market making

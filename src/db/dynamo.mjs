@@ -350,32 +350,35 @@ export async function updateXrpWithdrawAddress(userId, withdrawAddress) {
 
 export async function saveMarketMakingConfig(userId, config) {
     try {
-        await docClient.send(new PutCommand({
-            TableName: 'AramidDiscord-mmSettings',
-            Item: {
-                userID: userId.toString(), // Changed userId to userID
-                ...config,
-            },
-        }));
-
-        console.log(`Market making config saved for Discord user: ${userId}`);
+        const userIdString = String(userId);
+        console.log(`Saving market making config for user ${userIdString}:`, config);
+        
+        // Prefix all market making keys with mm_ to avoid conflicts
+        const prefixedConfig = {};
+        Object.entries(config).forEach(([key, value]) => {
+            prefixedConfig[`mm_${key}`] = value;
+        });
+        
+        console.log('Prefixed market making config:', prefixedConfig);
+        
+        // Use the existing saveTradeSettings function to update the settings
+        const success = await saveTradeSettings(userIdString, prefixedConfig);
+        
+        console.log(`Market making config saved successfully for user ${userIdString}`);
+        return success;
     } catch (error) {
-        console.error('Error saving market making config:', error);
+        console.error(`Error saving market making config for user ${userId}:`, error);
         throw error;
     }
 }
 
 export async function checkMarketMakingConfig(userId) {
     try {
-        const userData = await docClient.send(new GetCommand({
-            TableName: 'AramidDiscord-mmSettings',
-            Key: { userID: userId.toString() }, // Changed userId to userID
-        }));
-
-        return !!userData.Item;
+        const config = await getMarketMakingConfig(userId);
+        return !!config && !!config.tokenMint;
     } catch (error) {
         console.error('Error checking market-making config:', error);
-        throw error;
+        return false;
     }
 }
 
@@ -633,6 +636,51 @@ export async function getTransactionReferral(userId) {
         return userData?.Item?.referralPublicKey || null;
     } catch (error) {
         console.error(`Error getting referral key for user ${userId}:`, error);
+        return null;
+    }
+}
+
+/**
+ * Get user's market making configuration from the settings table
+ * @param {string} userId - Discord user ID
+ * @returns {Promise<Object|null>} - Market making configuration or null if not found
+ */
+export async function getMarketMakingConfig(userId) {
+    try {
+        // Always ensure userId is a string
+        const userIdString = String(userId);
+        console.log(`Fetching market making config for user: ${userIdString}`);
+        
+        // Use the existing getTradeSettings function to get all user settings
+        const settings = await getTradeSettings(userIdString);
+        
+        if (settings) {
+            // Extract market making specific settings if they exist
+            const marketMakingConfig = {
+                tokenMint: settings.mm_tokenMint,
+                tokenSymbol: settings.mm_tokenSymbol,
+                tokenName: settings.mm_tokenName,
+                spreadPercentage: settings.mm_spreadPercentage,
+                priceRange: settings.mm_priceRange,
+                autoAdjust: settings.mm_autoAdjust,
+                active: settings.mm_active,
+                startedAt: settings.mm_startedAt,
+                stoppedAt: settings.mm_stoppedAt,
+                minOrderSize: settings.mm_minOrderSize,
+                maxRisk: settings.mm_maxRisk
+            };
+            
+            // Check if any market making config exists
+            if (marketMakingConfig.tokenMint) {
+                console.log(`Found market making config for user ${userIdString}`);
+                return marketMakingConfig;
+            }
+        }
+        
+        console.log(`No market making config found for user ${userIdString}`);
+        return null;
+    } catch (error) {
+        console.error(`Error fetching market making config for user ${userId}:`, error);
         return null;
     }
 }
