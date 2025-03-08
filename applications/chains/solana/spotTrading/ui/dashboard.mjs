@@ -83,7 +83,7 @@ export async function showSolanaSpotTradingMenu(interaction) {
             );
         rows.push(row1);
 
-        // Add token holdings and buy buttons
+        // Add token holdings and action buttons (buy/sell)
         if (tokenBalances && tokenBalances.length > 0) {
             const tokensField = {
                 name: '🪙 Token Holdings',
@@ -99,26 +99,39 @@ export async function showSolanaSpotTradingMenu(interaction) {
                 tokensField.value = '```\n' + tokensList.join('\n') + '\n```';
                 embed.addFields(tokensField);
 
-                // Create buy buttons for existing tokens
-                const tokensPerRow = 3;
-                for (let i = 0; i < tokenBalances.length; i += tokensPerRow) {
-                    const rowTokens = tokenBalances.slice(i, i + tokensPerRow);
+                // Create rows of trading buttons for existing tokens
+                const tokensWithBalance = tokenBalances.filter(token => token.amount > 0);
+                const tokensPerRow = 2; // Using 2 tokens per row since we'll add both buy and sell buttons
+                
+                for (let i = 0; i < tokensWithBalance.length; i += tokensPerRow) {
+                    const rowTokens = tokensWithBalance.slice(i, i + tokensPerRow);
                     const tokenRow = new ActionRowBuilder();
-
+                    
+                    // For each token, add both Buy and Sell buttons
                     rowTokens.forEach(token => {
-                        if (token.amount > 0) {
-                            tokenRow.addComponents(
-                                new ButtonBuilder()
-                                    .setCustomId(`buy_more_${token.mint}`)
-                                    .setLabel(`Buy ${token.name}`)
-                                    .setStyle(ButtonStyle.Success)
-                            );
-                        }
+                        // Buy button
+                        tokenRow.addComponents(
+                            new ButtonBuilder()
+                                .setCustomId(`buy_more_${token.mint}`)
+                                .setLabel(`Buy ${token.name}`)
+                                .setStyle(ButtonStyle.Success)
+                        );
+                        
+                        // Sell button
+                        tokenRow.addComponents(
+                            new ButtonBuilder()
+                                .setCustomId(`sell_token_${token.mint}`)
+                                .setLabel(`Sell ${token.name}`)
+                                .setStyle(ButtonStyle.Danger)
+                        );
                     });
 
                     if (tokenRow.components.length > 0) {
                         rows.push(tokenRow);
                     }
+                    
+                    // Discord has a limit of 5 rows of components
+                    if (rows.length >= 4) break;
                 }
             }
         }

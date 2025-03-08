@@ -30,8 +30,18 @@ import {
     handleExecutePurchase,
     handleBackToPurchaseConfig,
     handleBackToBuyOptions,
-    handleQuickBuySelection  // Add this new import
+    handleQuickBuySelection
 } from '../../applications/chains/solana/spotTrading/solSpotTrading.mjs';
+
+// Update this import to import directly from tokenSelling.mjs instead of through solSpotTrading.mjs
+import { 
+    handleSellToken,
+    handleTokenSellSelection,
+    handleSetSellPercentage,
+    handleSellPercentageSubmit,
+    handleQuickSellSelection,
+    handleExecuteSell
+} from '../../applications/chains/solana/spotTrading/actions/tokenSelling.mjs';
 
 /**
  * Handle application interactions
@@ -81,6 +91,10 @@ export async function handleApplicationInteractions(interaction) {
                     await handlePurchaseAmountSubmit(interaction);
                     return;
                     
+                case 'sell_percentage_modal':
+                    await handleSellPercentageSubmit(interaction);
+                    return;
+                    
                 default:
                     console.log(`[MODAL DEBUG] Unhandled modal: ${interaction.customId}`);
                     await interaction.reply({
@@ -123,6 +137,34 @@ export async function handleApplicationInteractions(interaction) {
             if (interaction.customId.startsWith('quick_buy_')) {
                 console.log('[DEBUG] Detected quick buy button click:', interaction.customId);
                 await handleQuickBuySelection(interaction);
+                return;
+            }
+            
+            // Add handlers for sell-related buttons
+            switch (interaction.customId) {
+                case 'SOLANA_TOKEN_SELL':
+                    await handleSellToken(interaction);
+                    return;
+                    
+                case 'set_sell_percentage':
+                    await handleSetSellPercentage(interaction);
+                    return;
+                    
+                case 'execute_sell':
+                    await handleExecuteSell(interaction);
+                    return;
+                    
+                // ...other button handlers...
+            }
+            
+            // Handle pattern-matched button IDs
+            if (interaction.customId.startsWith('sell_token_')) {
+                await handleTokenSellSelection(interaction);
+                return;
+            }
+            
+            if (interaction.customId.startsWith('quick_sell_')) {
+                await handleQuickSellSelection(interaction);
                 return;
             }
             
@@ -213,6 +255,10 @@ export async function handleApplicationInteractions(interaction) {
                     await handlePurchaseAmountSubmit(interaction);
                     return;
                 
+                case 'sell_percentage_modal':
+                    await handleSellPercentageSubmit(interaction);
+                    return;
+                    
                 default:
                     console.log(`[DEBUG] Unhandled modal submission: ${interaction.customId}`);
                     break;

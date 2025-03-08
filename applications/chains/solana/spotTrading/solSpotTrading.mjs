@@ -29,8 +29,18 @@ import {
     handleExecutePurchase,
     handleBackToPurchaseConfig,
     handleBackToBuyOptions,
-    handleQuickBuySelection  // Add this new import
+    handleQuickBuySelection
 } from './actions/purchaseConfig.mjs';
+
+// Import the token selling handlers from the correct file
+import {
+    handleSellToken,
+    handleTokenSellSelection,
+    handleSetSellPercentage,
+    handleSellPercentageSubmit,
+    handleQuickSellSelection,
+    handleExecuteSell
+} from './actions/tokenSelling.mjs';  // Make sure this is correct
 
 // Re-export everything for backward compatibility
 export {
@@ -56,11 +66,19 @@ export {
     handleBackToPurchaseConfig,
     handleBackToBuyOptions,
     handleBackToSpotTrading,
-    handleQuickBuySelection  // Add this new export
+    handleQuickBuySelection,
+    handleSellToken,
+    handleTokenSellSelection,
+    handleSetSellPercentage,
+    handleSellPercentageSubmit,  // Renamed from handleSellPercentageSubmission
+    handleQuickSellSelection,    // Add this export
+    handleExecuteSell
+    // Removed handleBackToSellOptions as it doesn't exist
 };
 
 // Export shared state that needs to be accessible across files
 export const state = {
     solanaBuyTokenConfig: {},
+    solanaSellTokenConfig: {}, // Add this line for token selling
     tokenBalancesCache: {}
 };
