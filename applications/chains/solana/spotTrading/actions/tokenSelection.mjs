@@ -16,7 +16,7 @@ import {
     getSolanaPriorityFee 
 } from '../functions/utils.mjs';
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
-import { showTokenPurchaseConfigSimplified } from '../ui/purchaseConfig.mjs';
+import { showTokenPurchaseConfig } from '../ui/purchaseConfig.mjs';
 
 /**
  * Handle token address input modal
@@ -145,7 +145,7 @@ export async function handleEnterTokenAddress(interaction) {
 }
 
 /**
- * Handle token selection for buying
+ * Handle token selection for buying existing tokens
  */
 export async function handleTokenSelection(interaction) {
     try {
@@ -153,12 +153,15 @@ export async function handleTokenSelection(interaction) {
             return;
         }
         
+        // Start with deferUpdate to prevent timeout
+        await interaction.deferUpdate();
+        
         const tokenMint = interaction.customId.replace('buy_more_', '');
         const userId = interaction.user.id;
         const { exists, solPublicKey, solPrivateKey } = await checkUserWallet(userId);
         
         if (!exists) {
-            await interaction.reply({
+            await interaction.followUp({
                 content: '❌ No wallet found. Please create a wallet first.',
                 ephemeral: true
             });
@@ -194,52 +197,19 @@ export async function handleTokenSelection(interaction) {
             priorityFeeSol: mediumFee / LAMPORTS_PER_SOL,
         };
 
+        console.log(`Set up purchase config for token: ${tokenMint}`);
+        
         // Fetch token details
         const tokenDetails = await fetchTokenDetails(tokenMint);
         const tokenPrice = await fetchTokenPrice(tokenMint);
         
-        // Get the user's SOL balance
-        const solBalance = await fetchSolBalance(solPublicKey);
-        
         console.log('Token details retrieved:', tokenDetails);
         console.log('Token price:', tokenPrice);
-        console.log('SOL balance:', solBalance);
         
-        // Get token name with better fallback logic
-        const tokenName = tokenDetails?.name || 'Unknown Token';
-        const tokenSymbol = tokenDetails?.symbol || '';
-        const displayName = tokenSymbol ? `${tokenName} (${tokenSymbol})` : tokenName;
+        // Use the same showTokenPurchaseConfig method that's used for custom tokens
+        // This ensures consistency in the UI
+        await showTokenPurchaseConfig(interaction, tokenDetails, tokenPrice, true);
         
-        const embed = new EmbedBuilder()
-            .setTitle('Token Purchase Setup')
-            .setColor(0x0099FF)
-            .addFields(
-                { name: 'Selected Token', value: displayName, inline: true },
-                { name: 'Current Price', value: tokenPrice ? `$${tokenPrice}` : 'Unknown', inline: true },
-                { name: 'Wallet Balance', value: `${solBalance.toFixed(4)} SOL`, inline: true },
-                { name: 'Contract Address', value: `\`${tokenMint}\``, inline: false }
-            );
-
-        const row = new ActionRowBuilder()
-            .addComponents(
-                new ButtonBuilder()
-                    .setCustomId('set_purchase_amount')
-                    .setLabel('Set Amount')
-                    .setStyle(ButtonStyle.Primary),
-                new ButtonBuilder()
-                    .setCustomId('set_slippage')
-                    .setLabel('Set Slippage')
-                    .setStyle(ButtonStyle.Secondary),
-                new ButtonBuilder()
-                    .setCustomId('back_to_spot_trading')
-                    .setLabel('Back')
-                    .setStyle(ButtonStyle.Secondary)
-            );
-
-        await interaction.update({
-            embeds: [embed],
-            components: [row]
-        });
     } catch (error) {
         console.error('Error in handleTokenSelection:', error);
         
@@ -346,7 +316,7 @@ export async function handleTokenAddressSubmit(interaction) {
         }
         
         // Show the purchase configuration
-        await showTokenPurchaseConfigSimplified(interaction, tokenDetails, tokenPrice);
+        await showTokenPurchaseConfig(interaction, tokenDetails, tokenPrice, true);
         
     } catch (error) {
         console.error('❌ Error handling token address modal submission:', error);
@@ -524,36 +494,9 @@ export async function handlePopularTokenSelect(interaction) {
         console.log(`Selected popular token: ${displayName}, Address: ${tokenAddress}`);
         console.log('Token details:', tokenDetails);
         
-        const embed = new EmbedBuilder()
-            .setTitle('Token Purchase Setup')
-            .setColor(0x0099FF)
-            .addFields(
-                { name: 'Selected Token', value: displayName, inline: true },
-                { name: 'Current Price', value: tokenPrice ? `$${tokenPrice}` : 'Unknown', inline: true },
-                { name: 'Wallet Balance', value: `${solBalance.toFixed(4)} SOL`, inline: true },
-                { name: 'Contract Address', value: `\`${tokenAddress}\``, inline: false }
-            );
-
-        const row = new ActionRowBuilder()
-            .addComponents(
-                new ButtonBuilder()
-                    .setCustomId('set_purchase_amount')
-                    .setLabel('Set Amount')
-                    .setStyle(ButtonStyle.Primary),
-                new ButtonBuilder()
-                    .setCustomId('set_slippage')
-                    .setLabel('Set Slippage')
-                    .setStyle(ButtonStyle.Secondary),
-                new ButtonBuilder()
-                    .setCustomId('back_to_buy_options')
-                    .setLabel('Back')
-                    .setStyle(ButtonStyle.Secondary)
-            );
-
-        await interaction.update({
-            embeds: [embed],
-            components: [row]
-        });
+        // Use the same purchase config display function for consistency
+        await showTokenPurchaseConfig(interaction, tokenDetails, tokenPrice, false);
+        
     } catch (error) {
         console.error('Error handling popular token selection:', error);
         if (!interaction.replied && !interaction.deferred) {
