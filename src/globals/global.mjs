@@ -37,27 +37,61 @@ export const globalURLS = {
     raydiumMintAPI: 'https://api-v3.raydium.io/pools/info/mint/',
 };
 
-export const globalSettings = {
-    marketMakerDevMode: true, // Set to true if the bot is in DEV mode
-    xrpDevMode: true,        // Set to true if XRP features are in DEV mode
-    isBeta: true,            // Set to true if the bot is in BETA mode
-};
-
-// Discord developer/admin IDs (converted from Telegram IDs)
-export const globalDevModeWhiteList = [
-    '202145535086297088'  // Replace with actual Discord user IDs
-];
-
 export const isValidChannel = (channelId) => {
     return Object.values(CHANNEL_IDS).includes(channelId);
 };
 
-// Export everything as a single object for convenience
-export const globals = {
-    CHANNEL_IDS,
-    globalStaticConfig,
-    globalURLS,
-    globalSettings,
-    globalDevModeWhiteList,
-    isValidChannel
+// Development feature flags - control which features are in development mode
+export const developmentFlags = {
+    chains: {
+        xrpChain: true,
+        solChain: false
+    },
+
+    applications: {
+        spotTrading: false,
+        marketMaker: true
+    },
+};
+
+export const globalDevModeWhiteList = [
+    //'202145535086297088'
+];
+
+// Helper function to check if a user is whitelisted for dev features
+export const isWhitelistedForDevFeatures = (userId) => {
+    return globalDevModeWhiteList.includes(userId);
+};
+
+// Helper function to check if a feature is available for a specific user
+export const isFeatureAvailable = (featureCategory, featureName, userId) => {
+    // Allow access if:
+    // 1. Feature is not in development mode OR
+    // 2. User is in the whitelist
+    
+    // First check if the user is whitelisted
+    if (isWhitelistedForDevFeatures(userId)) {
+        return true;
+    }
+    
+    // Then check if feature is in development
+    // Handle nested structure correctly
+    const isDevMode = developmentFlags[featureCategory]?.[featureName] === true;
+    
+    return !isDevMode;
+};
+
+export const devFeatureMessage = (featureName) => `🚧 ${featureName} is currently under development. Please check back later! 🚧`;
+
+// Add this function to the exports
+export const logFeatureStatus = (userId) => {
+    console.log('[FEATURE STATUS DEBUG]', {
+        userId,
+        isWhitelisted: isWhitelistedForDevFeatures(userId),
+        developmentFlags,
+        xrpChainInDev: developmentFlags.chains?.xrpChain === true,
+        solChainInDev: developmentFlags.chains?.solChain === true,
+        spotTradingInDev: developmentFlags.applications?.spotTrading === true,
+        marketMakerInDev: developmentFlags.applications?.marketMaker === true,
+    });
 };

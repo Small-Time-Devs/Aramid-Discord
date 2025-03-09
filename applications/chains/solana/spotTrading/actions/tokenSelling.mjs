@@ -8,160 +8,75 @@ import {
     TextInputStyle 
 } from 'discord.js';
 import { state } from '../solSpotTrading.mjs';
-import { checkUserWallet, getTransactionKeys, getTradeSettings } from '../../../../../src/db/dynamo.mjs';
-import { 
-    fetchSolBalance, 
-    fetchTokenDetails, 
-    fetchTokenPrice,
-    fetchTokenBalances,
-    getSolanaPriorityFee 
-} from '../functions/utils.mjs';
+import { fetchSolBalance, fetchTokenBalances, fetchTokenDetails, getSolanaPriorityFee } from '../functions/utils.mjs';
+import { getTradeSettings, getTransactionKeys } from '../../../../../src/db/dynamo.mjs';
+import { showSolanaSpotTradingMenu } from '../ui/dashboard.mjs';
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
-import { showTokenSellConfig } from '../ui/sellConfig.mjs';
 import axios from 'axios';
 import { globalURLS, globalStaticConfig } from '../../../../../src/globals/global.mjs';
 
 /**
- * Handle the "Sell Token" button click
+ * Handle "Sell Token" button
  */
 export async function handleSellToken(interaction) {
     try {
-        await interaction.deferUpdate({ ephemeral: true });
+        await interaction.deferUpdate();
         
         const userId = interaction.user.id;
-        const { exists, solPublicKey } = await checkUserWallet(userId);
+        const { solPublicKey } = await getTransactionKeys(userId);
         
-        if (!exists) {
-            const embed = new EmbedBuilder()
-                .setTitle('No Wallet Found')
-                .setDescription('You need to generate a wallet first.')
-                .setColor(0xFF0000);
-
-            const row = new ActionRowBuilder()
-                .addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('generate_wallet')
-                        .setLabel('Generate Wallet')
-                        .setStyle(ButtonStyle.Primary)
-                );
-
-            await interaction.editReply({
-                embeds: [embed],
-                components: [row]
+        // Fetch token balances
+        const tokenBalances = await fetchTokenBalances(solPublicKey);
+        const tokensWithBalance = tokenBalances.filter(token => token.amount > 0);
+        
+        if (!tokensWithBalance.length) {
+            await interaction.followUp({
+                content: '❌ You don\'t have any tokens to sell.',
+                ephemeral: true
             });
             return;
         }
         
-        // Get user's token balances
-        const tokenBalances = await fetchTokenBalances(solPublicKey);
+        // Create a list of tokens
+        const embed = new EmbedBuilder()
+            .setTitle('Select Token to Sell')
+            .setDescription('Choose a token from your wallet')
+            .setColor(0x0099FF);
+            
+        // Create rows of buttons for tokens
+        const rows = [];
+        const tokensPerRow = 3;
         
-        if (!tokenBalances || tokenBalances.length === 0) {
-            const embed = new EmbedBuilder()
-                .setTitle('No Tokens Found')
-                .setDescription('You don\'t have any tokens to sell.')
-                .setColor(0xFF0000);
-
-            const row = new ActionRowBuilder()
+        for (let i = 0; i < tokensWithBalance.length && rows.length < 5; i += tokensPerRow) {
+            const rowTokens = tokensWithBalance.slice(i, i + tokensPerRow);
+            const row = new ActionRowBuilder();
+            
+            rowTokens.forEach(token => {
+                row.addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`sell_token_${token.mint}`)
+                        .setLabel(`${token.name || 'Unknown'}: ${token.amount}`)
+                        .setStyle(ButtonStyle.Primary)
+                );
+            });
+            
+            if (row.components.length > 0) {
+                rows.push(row);
+            }
+        }
+        
+        // Add back button
+        if (rows.length < 5) {
+            const backRow = new ActionRowBuilder()
                 .addComponents(
                     new ButtonBuilder()
                         .setCustomId('back_to_spot_trading')
                         .setLabel('Back')
                         .setStyle(ButtonStyle.Secondary)
+                        .setEmoji('↩️')
                 );
-
-            await interaction.editReply({
-                embeds: [embed],
-                components: [row]
-            });
-            return;
+            rows.push(backRow);
         }
-        
-        // Show token selection interface
-        await showTokenSellOptions(interaction, tokenBalances);
-        
-    } catch (error) {
-        console.error('Error handling Sell Token:', error);
-        await interaction.followUp({
-            content: '❌ Error processing your request. Please try again.',
-            ephemeral: true
-        });
-    }
-}
-
-/**
- * Display token sell options based on user's holdings
- */
-export async function showTokenSellOptions(interaction, tokenBalances) {
-    try {
-        const userId = interaction.user.id;
-        const { solPublicKey } = await checkUserWallet(userId);
-        const solBalance = await fetchSolBalance(solPublicKey);
-        
-        // Filter tokens that have a non-zero balance
-        const tokensWithBalance = tokenBalances.filter(token => token.amount > 0);
-        
-        const embed = new EmbedBuilder()
-            .setTitle('Sell Token')
-            .setDescription('Select a token to sell')
-            .setColor(0x0099FF)
-            .addFields(
-                { 
-                    name: 'Wallet Balance', 
-                    value: `${solBalance.toFixed(4)} SOL`, 
-                    inline: false 
-                }
-            );
-        
-        if (tokensWithBalance.length > 0) {
-            const tokenList = tokensWithBalance
-                .map(token => `${token.name}: ${token.amount}`)
-                .join('\n');
-                
-            embed.addFields(
-                { 
-                    name: 'Your Tokens', 
-                    value: '```\n' + tokenList + '\n```', 
-                    inline: false 
-                }
-            );
-        }
-        
-        // Create rows of buttons for tokens to sell
-        const rows = [];
-        const tokensPerRow = 3;
-        
-        for (let i = 0; i < tokensWithBalance.length; i += tokensPerRow) {
-            const rowTokens = tokensWithBalance.slice(i, i + tokensPerRow);
-            const tokenRow = new ActionRowBuilder();
-            
-            rowTokens.forEach(token => {
-                tokenRow.addComponents(
-                    new ButtonBuilder()
-                        .setCustomId(`sell_token_${token.mint}`)
-                        .setLabel(`Sell ${token.name}`)
-                        .setStyle(ButtonStyle.Danger)
-                );
-            });
-            
-            if (tokenRow.components.length > 0) {
-                rows.push(tokenRow);
-            }
-            
-            // Maximum of 5 rows of buttons
-            if (rows.length >= 4) break;
-        }
-        
-        // Add back button
-        const backRow = new ActionRowBuilder()
-            .addComponents(
-                new ButtonBuilder()
-                    .setCustomId('back_to_spot_trading')
-                    .setLabel('Back')
-                    .setStyle(ButtonStyle.Secondary)
-                    .setEmoji('↩️')
-            );
-        
-        rows.push(backRow);
         
         await interaction.editReply({
             embeds: [embed],
@@ -169,9 +84,9 @@ export async function showTokenSellOptions(interaction, tokenBalances) {
         });
         
     } catch (error) {
-        console.error('Error showing token sell options:', error);
+        console.error('Error handling token sell selection:', error);
         await interaction.followUp({
-            content: '❌ Failed to load token sell options. Please try again.',
+            content: `❌ Error loading tokens: ${error.message}. Please try again.`,
             ephemeral: true
         });
     }
@@ -182,96 +97,113 @@ export async function showTokenSellOptions(interaction, tokenBalances) {
  */
 export async function handleTokenSellSelection(interaction) {
     try {
-        if (!interaction.customId.startsWith('sell_token_')) {
-            return;
-        }
-        
-        // Start with deferUpdate to prevent timeout
-        await interaction.deferUpdate();
-        
         const tokenMint = interaction.customId.replace('sell_token_', '');
         const userId = interaction.user.id;
-        const { exists, solPublicKey } = await checkUserWallet(userId);
         
-        if (!exists) {
-            await interaction.followUp({
-                content: '❌ No wallet found. Please create a wallet first.',
-                ephemeral: true
-            });
-            return;
+        // Initialize configuration
+        if (!state.solanaSellTokenConfig) {
+            state.solanaSellTokenConfig = {};
         }
         
-        // Get priority fees with error handling
-        let priorityFees;
-        try {
-            priorityFees = await getSolanaPriorityFee();
-        } catch (error) {
-            console.error('Error getting priority fees, using default values:', error);
-            priorityFees = {
-                lowFee: 1000,
-                mediumFee: 10000,
-                highFee: 100000
-            };
+        if (!state.solanaSellTokenConfig[userId]) {
+            state.solanaSellTokenConfig[userId] = {};
         }
         
-        // Use null-safe access with default values
-        const mediumFee = priorityFees?.mediumFee || 10000;
+        // Set token to sell
+        state.solanaSellTokenConfig[userId].tokenMint = tokenMint;
         
-        // Get token details and balance
-        const tokenBalances = await fetchTokenBalances(solPublicKey);
-        const selectedToken = tokenBalances.find(token => token.mint === tokenMint);
+        await interaction.deferUpdate();
         
-        if (!selectedToken || selectedToken.amount <= 0) {
-            await interaction.followUp({
-                content: '❌ You don\'t have any of this token to sell.',
-                ephemeral: true
-            });
-            return;
-        }
-        
-        // Initialize sell config with the selected token
-        state.solanaSellTokenConfig = state.solanaSellTokenConfig || {};
-        state.solanaSellTokenConfig[userId] = {
-            userId,
-            tokenMint: tokenMint,
-            tokenAmount: selectedToken.amount,
-            sellPercentage: 100, // Default to selling 100%
-            tokenDecimals: selectedToken.decimals,
-            solPublicKey,
-            slippage: 50,
-            priorityFee: mediumFee,
-            priorityFeeSol: mediumFee / LAMPORTS_PER_SOL,
-        };
-
-        console.log(`Set up sell config for token: ${tokenMint}`);
-        console.log(`Token amount: ${selectedToken.amount}`);
-        console.log(`Token decimals: ${selectedToken.decimals}`);
-        
-        // Fetch token details
+        // Get token details and user keys
         const tokenDetails = await fetchTokenDetails(tokenMint);
-        const tokenPrice = await fetchTokenPrice(tokenMint);
+        const { solPublicKey } = await getTransactionKeys(userId);
         
-        console.log('Token details retrieved for selling:', tokenDetails);
-        console.log('Token price:', tokenPrice);
+        // Get token balances
+        const tokenBalances = await fetchTokenBalances(solPublicKey);
+        const selectedToken = tokenBalances.find(t => t.mint === tokenMint);
         
-        // Show token sell configuration
-        await showTokenSellConfig(interaction, selectedToken, tokenDetails, tokenPrice, true);
+        if (!selectedToken) {
+            throw new Error('Token not found in wallet.');
+        }
+        
+        const tokenAmount = selectedToken.amount;
+        state.solanaSellTokenConfig[userId].maxAmount = tokenAmount;
+        
+        // Get user settings for quick sell buttons
+        const userSettings = await getTradeSettings(userId);
+        
+        // Create the token selling configuration screen
+        const embed = new EmbedBuilder()
+            .setTitle('Token Sell Configuration')
+            .setColor(0x0099FF)
+            .addFields(
+                { name: 'Token', value: tokenDetails?.name || 'Unknown Token', inline: true },
+                { name: 'Balance', value: `${tokenAmount}`, inline: true },
+                { name: 'Contract', value: `\`${tokenMint}\``, inline: false }
+            );
+            
+        // Create row with sell percentage option
+        const row1 = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('set_sell_percentage')
+                    .setLabel('Set Percentage to Sell')
+                    .setStyle(ButtonStyle.Primary),
+                new ButtonBuilder()
+                    .setCustomId('set_priority_fee')
+                    .setLabel('Set Priority Fee')
+                    .setStyle(ButtonStyle.Secondary)
+            );
+            
+        // Create quick sell buttons if settings are configured
+        const quickSellRow = new ActionRowBuilder();
+        
+        if (userSettings && userSettings.minQuickSell && userSettings.mediumQuickSell && userSettings.largeQuickSell) {
+            quickSellRow.addComponents(
+                new ButtonBuilder()
+                    .setCustomId('quick_sell_min')
+                    .setLabel(`Sell ${userSettings.minQuickSell}%`)
+                    .setStyle(ButtonStyle.Primary),
+                new ButtonBuilder()
+                    .setCustomId('quick_sell_med')
+                    .setLabel(`Sell ${userSettings.mediumQuickSell}%`)
+                    .setStyle(ButtonStyle.Primary),
+                new ButtonBuilder()
+                    .setCustomId('quick_sell_large')
+                    .setLabel(`Sell ${userSettings.largeQuickSell}%`)
+                    .setStyle(ButtonStyle.Primary)
+            );
+        }
+        
+        // Create execution and back buttons
+        const row3 = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('execute_sell')
+                    .setLabel('Execute Sell')
+                    .setStyle(ButtonStyle.Success)
+                    .setDisabled(!state.solanaSellTokenConfig[userId].sellPercentage), // Disabled until percentage set
+                new ButtonBuilder()
+                    .setCustomId('SOLANA_TOKEN_SELL')
+                    .setLabel('Back')
+                    .setStyle(ButtonStyle.Danger)
+            );
+            
+        // Prepare components based on whether quick sell buttons exist
+        const components = quickSellRow.components.length > 0 ? 
+            [row1, quickSellRow, row3] : [row1, row3];
+        
+        await interaction.editReply({
+            embeds: [embed],
+            components: components
+        });
         
     } catch (error) {
-        console.error('Error in handleTokenSellSelection:', error);
-        
-        // Ensure we respond to the interaction even if there's an error
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({
-                content: `❌ An error occurred: ${error.message}. Please try again.`,
-                ephemeral: true
-            });
-        } else {
-            await interaction.followUp({
-                content: `❌ An error occurred: ${error.message}. Please try again.`,
-                ephemeral: true
-            });
-        }
+        console.error('Error handling token sell selection:', error);
+        await interaction.followUp({
+            content: `❌ Error configuring token sell: ${error.message}. Please try again.`,
+            ephemeral: true
+        });
     }
 }
 
@@ -368,7 +300,7 @@ export async function handleQuickSellSelection(interaction) {
         console.log(`Updated sell percentage to ${percentage}% using quick sell button`);
         
         // Fetch token details for the updated display
-        const { solPublicKey } = await checkUserWallet(userId);
+        const { solPublicKey } = await getTransactionKeys(userId);
         const tokenBalances = await fetchTokenBalances(solPublicKey);
         const selectedToken = tokenBalances.find(token => token.mint === config.tokenMint);
         
@@ -438,7 +370,7 @@ export async function handleExecuteSell(interaction) {
         }
         
         // Fetch current token balance
-        const { solPublicKey } = await checkUserWallet(userId);
+        const { solPublicKey } = await getTransactionKeys(userId);
         const tokenBalances = await fetchTokenBalances(solPublicKey);
         const selectedToken = tokenBalances.find(token => token.mint === config.tokenMint);
         

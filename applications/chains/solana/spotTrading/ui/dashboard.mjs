@@ -2,25 +2,50 @@ import {
     EmbedBuilder, 
     ActionRowBuilder, 
     ButtonBuilder, 
-    ButtonStyle
+    ButtonStyle 
 } from 'discord.js';
+import { checkUserWallet, getTradeSettings } from '../../../../../src/db/dynamo.mjs';
+import { state } from '../solSpotTrading.mjs';
 import { fetchSolBalance, fetchTokenBalances } from '../functions/utils.mjs';
-import { checkUserWallet } from '../../../../../src/db/dynamo.mjs';
+import { isFeatureAvailable, devFeatureMessage } from '../../../../../src/globals/global.mjs';
 
 /**
- * Display Solana spot trading main menu
+ * Show Solana spot trading main dashboard
+ * @param {Object} interaction - Discord interaction
  */
 export async function showSolanaSpotTradingMenu(interaction) {
     try {
         const userId = interaction.user.id;
-        const { exists, solPublicKey } = await checkUserWallet(userId);
-
-        if (!exists) {
+        
+        // Check if Solana chain or spot trading is in development mode and user is not whitelisted
+        if (!isFeatureAvailable('chains', 'solChain', userId) || 
+            !isFeatureAvailable('applications', 'spotTrading', userId)) {
+            
+            // Use the appropriate reply method based on interaction state
+            if (interaction.replied || interaction.deferred) {
+                await interaction.followUp({
+                    content: devFeatureMessage('Solana Spot Trading'),
+                    ephemeral: true
+                });
+            } else {
+                await interaction.reply({
+                    content: devFeatureMessage('Solana Spot Trading'),
+                    ephemeral: true
+                });
+            }
+            return;
+        }
+        
+        // Continue with existing functionality
+        const response = await checkUserWallet(userId);
+        
+        // Check if wallet exists
+        if (!response.exists) {
             const embed = new EmbedBuilder()
                 .setTitle('No Wallet Found')
                 .setDescription('You need to generate a wallet first.')
                 .setColor(0xFF0000);
-
+                
             const row = new ActionRowBuilder()
                 .addComponents(
                     new ButtonBuilder()
@@ -28,116 +53,87 @@ export async function showSolanaSpotTradingMenu(interaction) {
                         .setLabel('Generate Wallet')
                         .setStyle(ButtonStyle.Primary)
                 );
-
-            await interaction.update({
-                embeds: [embed],
-                components: [row]
-            });
+                
+            // Reply or update based on interaction state
+            if (interaction.replied || interaction.deferred) {
+                await interaction.followUp({
+                    embeds: [embed],
+                    components: [row],
+                    ephemeral: true
+                });
+            } else if (interaction.isButton()) {
+                await interaction.update({
+                    embeds: [embed],
+                    components: [row]
+                });
+            } else {
+                await interaction.reply({
+                    embeds: [embed],
+                    components: [row],
+                    ephemeral: true
+                });
+            }
             return;
         }
-
+        
         // Fetch wallet balances
+        const solPublicKey = response.solPublicKey;
         const solBalance = await fetchSolBalance(solPublicKey);
         const tokenBalances = await fetchTokenBalances(solPublicKey);
-
-        // Create main trading menu embed
+        
+        // Create the main spot trading embed
         const embed = new EmbedBuilder()
-            .setTitle('🌟 Solana Spot Trading Dashboard')
-            .setDescription('Manage your trades and view your portfolio')
-            .setColor(0x0099FF)
+            .setTitle('📈 Solana Spot Trading')
+            .setDescription('Buy and sell tokens on the Solana blockchain')
+            .setColor(0x00FFFF) // Cyan for spot trading
             .addFields(
                 {
-                    name: 'Wallet Balance',
-                    value: [
-                        '```',
-                        `SOL Balance: ${solBalance.toFixed(4)} SOL`,
-                        `Address: ${solPublicKey}`,
-                        '```',
-                        `[View on Solscan](https://solscan.io/account/${solPublicKey})`,
-                    ].join('\n'),
+                    name: 'Wallet Address',
+                    value: `\`${solPublicKey}\`\n[View on Solscan](https://solscan.io/account/${solPublicKey})`,
+                    inline: false
+                },
+                {
+                    name: 'SOL Balance',
+                    value: `${solBalance.toFixed(4)} SOL`,
                     inline: false
                 }
             );
-
-        // Create action rows array for all buttons
-        const rows = [];
-
-        // Add main action buttons first
+            
+        // Add token holdings section if there are tokens
+        if (tokenBalances && tokenBalances.length > 0) {
+            const tokenList = tokenBalances
+                .filter(token => token.amount > 0)
+                .map(token => `${token.name || token.mint.substr(0, 8)}: ${token.amount}`)
+                .slice(0, 5) // Just show first 5 tokens
+                .join('\n');
+                
+            if (tokenList.length > 0) {
+                embed.addFields(
+                    {
+                        name: 'Your Tokens',
+                        value: '```\n' + tokenList + '\n```',
+                        inline: false
+                    }
+                );
+            }
+        }
+        
+        // Create action buttons - ONLY the Buy/Sell and Settings buttons on main screen
         const row1 = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
                     .setCustomId('SOLANA_TOKEN_BUY')
-                    .setLabel('Buy New Token')
+                    .setLabel('Buy Tokens')
                     .setStyle(ButtonStyle.Success)
-                    .setEmoji('📈'),
+                    .setEmoji('💰'),
                 new ButtonBuilder()
                     .setCustomId('SOLANA_TOKEN_SELL')
-                    .setLabel('Sell Token')
-                    .setStyle(ButtonStyle.Danger)
-                    .setEmoji('📉'),
-                new ButtonBuilder()
-                    .setCustomId('refresh_trading_view')
-                    .setLabel('Refresh')
-                    .setStyle(ButtonStyle.Secondary)
-                    .setEmoji('🔄')
+                    .setLabel('Sell Tokens')
+                    .setStyle(ButtonStyle.Primary)
+                    .setEmoji('💱')
             );
-        rows.push(row1);
-
-        // Add token holdings and action buttons (buy/sell)
-        if (tokenBalances && tokenBalances.length > 0) {
-            const tokensField = {
-                name: '🪙 Token Holdings',
-                value: '',
-                inline: false
-            };
-
-            const tokensList = tokenBalances
-                .filter(token => token.amount > 0)
-                .map(token => `${token.name}: ${token.amount.toFixed(token.decimals)}`);
-
-            if (tokensList.length > 0) {
-                tokensField.value = '```\n' + tokensList.join('\n') + '\n```';
-                embed.addFields(tokensField);
-
-                // Create rows of trading buttons for existing tokens
-                const tokensWithBalance = tokenBalances.filter(token => token.amount > 0);
-                const tokensPerRow = 2; // Using 2 tokens per row since we'll add both buy and sell buttons
-                
-                for (let i = 0; i < tokensWithBalance.length; i += tokensPerRow) {
-                    const rowTokens = tokensWithBalance.slice(i, i + tokensPerRow);
-                    const tokenRow = new ActionRowBuilder();
-                    
-                    // For each token, add both Buy and Sell buttons
-                    rowTokens.forEach(token => {
-                        // Buy button
-                        tokenRow.addComponents(
-                            new ButtonBuilder()
-                                .setCustomId(`buy_more_${token.mint}`)
-                                .setLabel(`Buy ${token.name}`)
-                                .setStyle(ButtonStyle.Success)
-                        );
-                        
-                        // Sell button
-                        tokenRow.addComponents(
-                            new ButtonBuilder()
-                                .setCustomId(`sell_token_${token.mint}`)
-                                .setLabel(`Sell ${token.name}`)
-                                .setStyle(ButtonStyle.Danger)
-                        );
-                    });
-
-                    if (tokenRow.components.length > 0) {
-                        rows.push(tokenRow);
-                    }
-                    
-                    // Discord has a limit of 5 rows of components
-                    if (rows.length >= 4) break;
-                }
-            }
-        }
-
-        // Add settings/back buttons as the last row
-        const lastRow = new ActionRowBuilder()
+            
+        const row2 = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
                     .setCustomId('trade_settings')
@@ -150,18 +146,47 @@ export async function showSolanaSpotTradingMenu(interaction) {
                     .setStyle(ButtonStyle.Secondary)
                     .setEmoji('↩️')
             );
-        rows.push(lastRow);
-
-        await interaction.update({
-            embeds: [embed],
-            components: rows
-        });
-
+        
+        // Send response with just the main buttons - no quick buy/sell buttons at this stage
+        const components = [row1, row2];
+        
+        if (interaction.replied || interaction.deferred) {
+            await interaction.followUp({
+                embeds: [embed],
+                components: components,
+                ephemeral: true
+            });
+        } else if (interaction.isButton()) {
+            await interaction.update({
+                embeds: [embed],
+                components: components
+            });
+        } else {
+            await interaction.reply({
+                embeds: [embed],
+                components: components,
+                ephemeral: true
+            });
+        }
+        
     } catch (error) {
-        console.error('Error displaying Solana trading menu:', error);
-        await interaction.reply({
-            content: '❌ Error loading trading menu. Please try again.',
-            ephemeral: true
-        });
+        console.error('Error showing Solana spot trading menu:', error);
+        
+        // Safe error handling
+        try {
+            if (interaction.replied || interaction.deferred) {
+                await interaction.followUp({
+                    content: `❌ Error loading spot trading menu: ${error.message}. Please try again.`,
+                    ephemeral: true
+                });
+            } else {
+                await interaction.reply({
+                    content: `❌ Error loading spot trading menu: ${error.message}. Please try again.`,
+                    ephemeral: true
+                });
+            }
+        } catch (replyError) {
+            console.error('Error sending error message:', replyError);
+        }
     }
 }

@@ -241,17 +241,108 @@ export async function handleBackToPurchaseConfig(interaction) {
 }
 
 /**
- * Handle back to buy options button
+ * Handle the back button press from token purchase config to return to buy options
  */
 export async function handleBackToBuyOptions(interaction) {
     try {
-        await showTokenBuyOptions(interaction);
-    } catch (error) {
-        console.error('Error going back to buy options:', error);
-        await interaction.reply({
-            content: '❌ Failed to return to token options. Please try again.',
-            ephemeral: true
+        console.log('[DEBUG] Handling back to buy options');
+        await interaction.deferUpdate();
+        
+        const userId = interaction.user.id;
+        
+        // Create embedded message for buy options
+        const embed = new EmbedBuilder()
+            .setTitle('Buy Tokens')
+            .setDescription('Choose how you would like to buy tokens')
+            .setColor(0x00FFFF);
+        
+        // Create action buttons
+        const row1 = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('enter_token_address')
+                    .setLabel('Enter Token Address')
+                    .setStyle(ButtonStyle.Primary)
+                    .setEmoji('📝')
+            );
+        
+        // Add some popular tokens
+        const row2 = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('popular_token_sol')
+                    .setLabel('SOL')
+                    .setStyle(ButtonStyle.Success),
+                new ButtonBuilder()
+                    .setCustomId('popular_token_bonk')
+                    .setLabel('BONK')
+                    .setStyle(ButtonStyle.Success),
+                new ButtonBuilder()
+                    .setCustomId('popular_token_jup')
+                    .setLabel('JUP')
+                    .setStyle(ButtonStyle.Success)
+            );
+        
+        // Add previously bought tokens if available
+        const recentTokens = state.tokenBalancesCache[userId];
+        const row3 = new ActionRowBuilder();
+        
+        if (recentTokens && recentTokens.length > 0) {
+            // Take the first 3 tokens
+            for (let i = 0; i < Math.min(recentTokens.length, 3); i++) {
+                const token = recentTokens[i];
+                if (token.mint && token.name) {
+                    row3.addComponents(
+                        new ButtonBuilder()
+                            .setCustomId(`buy_more_${token.mint}`)
+                            .setLabel(`Buy ${token.name}`)
+                            .setStyle(ButtonStyle.Primary)
+                    );
+                }
+            }
+        }
+        
+        // Add a back button
+        const row4 = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('back_to_spot_trading')
+                    .setLabel('Back to Trading')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('↩️')
+            );
+        
+        // Determine which rows to include
+        const rows = [row1, row2];
+        
+        if (row3.components.length > 0) {
+            rows.push(row3);
+        }
+        
+        rows.push(row4);
+        
+        // Update the interaction with the buy options
+        await interaction.editReply({
+            embeds: [embed],
+            components: rows
         });
+        
+        console.log('[DEBUG] Successfully navigated back to buy options');
+        
+    } catch (error) {
+        console.error('Error handling back to buy options:', error);
+        
+        if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({
+                content: '❌ Failed to go back to the previous screen. Please try again.',
+                ephemeral: true
+            });
+        } else {
+            await interaction.followUp({
+                content: '❌ Failed to go back to the previous screen. Please try again.',
+                ephemeral: true
+            });
+        }
     }
 }
 

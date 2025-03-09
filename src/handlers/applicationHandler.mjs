@@ -14,7 +14,6 @@ import {
 
 // Import other handlers from solSpotTrading.mjs
 import { 
-    showSolanaSpotTradingMenu, 
     handleTokenAddressInput,
     handleTokenAddressSubmit,
     handleTokenSelection,
@@ -45,14 +44,23 @@ import {
 
 import { showMarketMakerDashboard } from '../../applications/chains/solana/marketMaking/ui/dashboard.mjs';
 
+// Add this import at the top with other imports
+import { developmentFlags, devFeatureMessage, isWhitelistedForDevFeatures, isFeatureAvailable, logFeatureStatus } from '../globals/global.mjs';
+
+// Update this import to get the function directly from the dashboard file
+import { showSolanaSpotTradingMenu } from '../../applications/chains/solana/spotTrading/ui/dashboard.mjs';
+
 /**
  * Handle application interactions
  */
 export async function handleApplicationInteractions(interaction) {
     try {
+        const userId = interaction.user.id;
+
         // Debug logging for all interactions
         if (interaction.isButton()) {
             console.log(`[DEBUG] Button interaction: ${interaction.customId}`);
+            logFeatureStatus(userId);
         } else if (interaction.isModalSubmit()) {
             console.log(`[DEBUG] Modal submission: ${interaction.customId}`);
             console.log(`[DEBUG] Modal user: ${interaction.user.id} (${interaction.user.tag})`);
@@ -135,13 +143,6 @@ export async function handleApplicationInteractions(interaction) {
                 return;
             }
             
-            // Add explicit logging for quick buy buttons to verify they're being recognized
-            if (interaction.customId.startsWith('quick_buy_')) {
-                console.log('[DEBUG] Detected quick buy button click:', interaction.customId);
-                await handleQuickBuySelection(interaction);
-                return;
-            }
-            
             // Add handlers for sell-related buttons
             switch (interaction.customId) {
                 case 'SOLANA_TOKEN_SELL':
@@ -169,36 +170,9 @@ export async function handleApplicationInteractions(interaction) {
                 await handleQuickSellSelection(interaction);
                 return;
             }
-            
-            // ...other button handlers...
         }
         
-        // SETTINGS HANDLERS - highest priority
-        // These handle both button clicks and modal submissions related to settings
-        
-        if (interaction.isButton()) {
-            // Handle settings buttons
-            if (interaction.customId === 'trade_settings' || interaction.customId === 'settings') {
-                console.log('[DEBUG] Routing to handleTradeSettings');
-                await handleTradeSettings(interaction);
-                return;
-            }
-            
-            if (interaction.customId === 'set_quick_buy') {
-                console.log('[DEBUG] Routing to showQuickBuyModal');
-                await showQuickBuyModal(interaction);
-                return;
-            }
-            
-            if (interaction.customId === 'set_quick_sell') {
-                console.log('[DEBUG] Routing to showQuickSellModal');
-                await showQuickSellModal(interaction);
-                return;
-            }
-            
-            // ...other button handlers...
-        }
-        
+        // Handle modal submissions related to settings
         if (interaction.isModalSubmit()) {
             // Log all modal fields for debugging
             console.log(`[MODAL DEBUG] Modal ${interaction.customId} submission fields:`, 
@@ -275,10 +249,27 @@ export async function handleApplicationInteractions(interaction) {
                     break;
 
                 case 'spot_trading':
+                    // Check if spot trading is in development mode and user is not whitelisted
+                    if (!isFeatureAvailable('applications', 'spotTrading', userId)) {
+                        await interaction.reply({
+                            content: devFeatureMessage('Spot Trading'),
+                            ephemeral: true
+                        });
+                        return;
+                    }
                     await sendChainSelectionForApp(interaction, 'spot');
                     break;
 
                 case 'market_maker':
+                    // Check if market making is in development mode and user is not whitelisted
+                    if (!isFeatureAvailable('applications', 'marketMaker', userId)) {
+                        await interaction.reply({
+                            content: devFeatureMessage('Market Making'),
+                            ephemeral: true
+                        });
+                        return;
+                    }
+                    
                     console.log('[DEBUG] Handling market maker button click');
             
                     // Show chain selection for market making
@@ -310,6 +301,14 @@ export async function handleApplicationInteractions(interaction) {
                     return;
 
                 case 'spot_solana':
+                    // Check if Solana chain is in development mode and user is not whitelisted
+                    if (!isFeatureAvailable('chains', 'solChain', userId)) {
+                        await interaction.reply({
+                            content: devFeatureMessage('Solana Spot Trading'),
+                            ephemeral: true
+                        });
+                        return;
+                    }
                     await showSolanaSpotTradingMenu(interaction);
                     break;
                     
@@ -343,6 +342,7 @@ export async function handleApplicationInteractions(interaction) {
                     break;
                     
                 case 'back_to_buy_options':
+                    console.log('[DEBUG] Routing to handleBackToBuyOptions');
                     await handleBackToBuyOptions(interaction);
                     break;
                     
@@ -351,34 +351,71 @@ export async function handleApplicationInteractions(interaction) {
                     break;
 
                 case 'spot_xrp':
-                    // Handle XRP spot trading
+                    console.log(`[DEBUG] Handling spot_xrp button. XRP Chain dev status: ${developmentFlags.chains.xrpChain}`);
+                    console.log(`[DEBUG] User ${userId} whitelisted: ${isWhitelistedForDevFeatures(userId)}`);
+                    console.log(`[DEBUG] Feature available: ${isFeatureAvailable('chains', 'xrpChain', userId)}`);
+                    
+                    // Check if XRP chain is in development mode and user is not whitelisted
+                    if (!isFeatureAvailable('chains', 'xrpChain', userId)) {
+                        console.log(`[DEBUG] Showing development message for XRP spot trading`);
+                        await interaction.reply({
+                            content: devFeatureMessage('XRP Spot Trading'),
+                            ephemeral: true
+                        });
+                        return;
+                    }
+                    
+                    console.log(`[DEBUG] User ${userId} accessing XRP spot trading`);
+                    // Existing XRP spot trading code
                     await interaction.update({
                         content: 'Starting XRP spot trading...',
                         components: [],
                         embeds: []
                     });
-                    // Add logic to start XRP spot trading
                     break;
 
                 case 'market_solana':
+                    // Check if Solana chain is in development mode and user is not whitelisted
+                    if (!isFeatureAvailable('chains', 'solChain', userId) || 
+                        !isFeatureAvailable('applications', 'marketMaker', userId)) {
+                        await interaction.reply({
+                            content: devFeatureMessage('Solana Market Making'),
+                            ephemeral: true
+                        });
+                        return;
+                    }
+                    
                     console.log('[DEBUG] Opening Solana market making dashboard');
             
-                    // First defer the reply to prevent timeout
-                    await interaction.deferUpdate();
+                    // First defer the reply to prevent timeout during processing
+                    await interaction.deferUpdate().catch(err => {
+                        console.error('Error deferring update:', err);
+                    });
                     
-                    // Show the market maker dashboard
-                    await showMarketMakerDashboard(interaction);
+                    // Show market maker dashboard with the followUp flag set to true
+                    // This ensures we don't try to update an already-replied interaction
+                    await showMarketMakerDashboard(interaction, true);
                     
                     return;
 
                 case 'market_xrp':
-                    // Handle XRP market making
+                    // Check if XRP chain is in development mode and user is not whitelisted
+                    if (!isFeatureAvailable('chains', 'xrpChain', userId) || 
+                        !isFeatureAvailable('applications', 'marketMaker', userId)) {
+                        await interaction.reply({
+                            content: devFeatureMessage('XRP Market Making'),
+                            ephemeral: true
+                        });
+                        return;
+                    }
+                    
+                    console.log(`[DEBUG] User ${userId} accessing XRP market making`);
+                    // Existing XRP market making code
                     await interaction.update({
                         content: 'Starting XRP market making...',
                         components: [],
                         embeds: []
                     });
-                    // Add logic to start XRP market making
                     break;
 
                 case 'back_to_applications':

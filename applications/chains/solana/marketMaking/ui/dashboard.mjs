@@ -14,6 +14,7 @@ import {
     fetchSolBalance, 
     fetchTokenBalances 
 } from '../../spotTrading/functions/utils.mjs';
+import { isFeatureAvailable, devFeatureMessage } from '../../../../../src/globals/global.mjs';
 
 /**
  * Display Solana market maker main dashboard
@@ -23,6 +24,26 @@ import {
 export async function showMarketMakerDashboard(interaction, isFollowUp = false) {
     try {
         const userId = interaction.user.id;
+        
+        // Check if Solana chain or market maker is in development mode and user is not whitelisted
+        if (!isFeatureAvailable('chains', 'solChain', userId) || 
+            !isFeatureAvailable('applications', 'marketMaker', userId)) {
+            
+            // Use the appropriate method based on interaction state to show the dev message
+            if (isFollowUp || interaction.replied) {
+                await interaction.followUp({
+                    content: devFeatureMessage('Solana Market Making'),
+                    ephemeral: true
+                });
+            } else {
+                await interaction.reply({
+                    content: devFeatureMessage('Solana Market Making'),
+                    ephemeral: true
+                });
+            }
+            return;
+        }
+        
         const { exists, solPublicKey } = await checkUserWallet(userId);
 
         // Create no wallet embed if no wallet exists

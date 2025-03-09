@@ -44,68 +44,90 @@ export async function handleTokenAddressInput(interaction) {
  */
 export async function handleBuyNewToken(interaction) {
     try {
-        await interaction.deferUpdate({ ephemeral: true });
+        await interaction.deferUpdate();
         
+        // Create embedded message for buy options
+        const embed = new EmbedBuilder()
+            .setTitle('Buy Tokens')
+            .setDescription('Choose how you would like to buy tokens')
+            .setColor(0x00FFFF);
+        
+        // Create action buttons
+        const row1 = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('enter_token_address')
+                    .setLabel('Enter Token Address')
+                    .setStyle(ButtonStyle.Primary)
+                    .setEmoji('📝')
+            );
+        
+        // Add popular tokens
+        const row2 = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('popular_token_sol')
+                    .setLabel('SOL')
+                    .setStyle(ButtonStyle.Success),
+                new ButtonBuilder()
+                    .setCustomId('popular_token_bonk')
+                    .setLabel('BONK')
+                    .setStyle(ButtonStyle.Success),
+                new ButtonBuilder()
+                    .setCustomId('popular_token_jup')
+                    .setLabel('JUP')
+                    .setStyle(ButtonStyle.Success)
+            );
+        
+        // Add recently bought tokens if available
         const userId = interaction.user.id;
-        const { exists, solPublicKey, solPrivateKey } = await checkUserWallet(userId);
+        const recentTokens = state.tokenBalancesCache[userId];
+        const row3 = new ActionRowBuilder();
         
-        if (!exists) {
-            const embed = new EmbedBuilder()
-                .setTitle('No Wallet Found')
-                .setDescription('You need to generate a wallet first.')
-                .setColor(0xFF0000);
-
-            const row = new ActionRowBuilder()
-                .addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('generate_wallet')
-                        .setLabel('Generate Wallet')
-                        .setStyle(ButtonStyle.Primary)
-                );
-
-            await interaction.editReply({
-                embeds: [embed],
-                components: [row]
-            });
-            return;
+        if (recentTokens && recentTokens.length > 0) {
+            // Take the first 3 tokens
+            for (let i = 0; i < Math.min(recentTokens.length, 3); i++) {
+                const token = recentTokens[i];
+                if (token.mint && token.name) {
+                    row3.addComponents(
+                        new ButtonBuilder()
+                            .setCustomId(`buy_more_${token.mint}`)
+                            .setLabel(`Buy ${token.name}`)
+                            .setStyle(ButtonStyle.Primary)
+                    );
+                }
+            }
         }
         
-        // Get priority fees with error handling
-        let priorityFees;
-        try {
-            priorityFees = await getSolanaPriorityFee();
-        } catch (error) {
-            console.error('Error getting priority fees, using default values:', error);
-            priorityFees = {
-                lowFee: 1000,
-                mediumFee: 10000,
-                highFee: 100000
-            };
+        // Add a back button
+        const row4 = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('back_to_spot_trading')
+                    .setLabel('Back to Trading')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('↩️')
+            );
+        
+        // Determine which rows to include
+        const rows = [row1, row2];
+        
+        if (row3.components.length > 0) {
+            rows.push(row3);
         }
         
-        // Use null-safe access with default values
-        const mediumFee = priorityFees?.mediumFee || 10000;
+        rows.push(row4);
         
-        // Initialize the configuration
-        state.solanaBuyTokenConfig[userId] = {
-            userId,
-            outputMint: '',
-            amount: 0.01,
-            jito: false,
-            solPublicKey,
-            solPrivateKey,
-            slippage: 50,
-            priorityFee: mediumFee,
-            priorityFeeSol: mediumFee / LAMPORTS_PER_SOL
-        };
-
-        // Show token input options
-        await showTokenBuyOptions(interaction);
+        // Send the buy options
+        await interaction.editReply({
+            embeds: [embed],
+            components: rows
+        });
         
     } catch (error) {
-        console.error('Error handling Buy New Token:', error);
+        console.error('Error showing buy token options:', error);
         await interaction.followUp({
-            content: '❌ Error processing your request. Please try again.',
+            content: '❌ Failed to load token buy options. Please try again.',
             ephemeral: true
         });
     }

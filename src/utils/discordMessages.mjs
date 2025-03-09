@@ -1,4 +1,5 @@
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { developmentFlags, isFeatureAvailable } from '../globals/global.mjs';
 
 export const sendWelcomeMessage = async (channel) => {
     await channel.send({
@@ -64,11 +65,11 @@ export const sendMainMenuOriginal = async (channel) => {
             ],
             color: 0x5865F2,
             thumbnail: {
-                url: 'https://i.imgur.com/AfFp7pu.png'
+                url: 'https://www.smalltimedevs.com/wp-content/uploads/2024/07/smalltimedevs-secondpage-1024x626.png'
             },
             footer: {
-                text: '24/7 Crypto Assistant | Version 1.0',
-                icon_url: 'https://i.imgur.com/AfFp7pu.png'
+                text: '24/7 Crypto Assistant | Version 0.0.1',
+                icon_url: 'https://www.smalltimedevs.com/wp-content/uploads/2024/07/smalltimedevs-secondpage-1024x626.png'
             },
             timestamp: new Date()
         }],
@@ -147,7 +148,7 @@ export const sendChainSelection = async (channel) => {
             color: 0x2ECC71,
             footer: {
                 text: '← Use "Back to Menu" to return',
-                icon_url: 'https://i.imgur.com/AfFp7pu.png' // Replace with your bot's icon
+                icon_url: 'https://www.smalltimedevs.com/wp-content/uploads/2024/07/smalltimedevs-secondpage-1024x626.png' // Replace with your bot's icon
             },
             timestamp: new Date()
         }],
@@ -211,11 +212,11 @@ export const sendWalletDetails = async (channel, walletData) => {
             ],
             color: 0x5865F2,
             thumbnail: {
-                url: 'https://i.imgur.com/AfFp7pu.png' // Replace with your wallet icon
+                url: 'https://www.smalltimedevs.com/wp-content/uploads/2024/07/smalltimedevs-secondpage-1024x626.png' // Replace with your wallet icon
             },
             footer: {
                 text: 'Last updated: ' + new Date().toLocaleString(),
-                icon_url: 'https://i.imgur.com/AfFp7pu.png'
+                icon_url: 'https://www.smalltimedevs.com/wp-content/uploads/2024/07/smalltimedevs-secondpage-1024x626.png'
             }
         }],
         components: [
@@ -336,11 +337,11 @@ export const sendStartupMessage = async (channel) => {
             ],
             color: 0x5865F2,
             thumbnail: {
-                url: 'https://i.imgur.com/AfFp7pu.png'
+                url: 'https://www.smalltimedevs.com/wp-content/uploads/2024/07/smalltimedevs-secondpage-1024x626.png'
             },
             footer: {
-                text: '24/7 Crypto Assistant | Version 1.0',
-                icon_url: 'https://i.imgur.com/AfFp7pu.png'
+                text: '24/7 Crypto Assistant | Version 0.0.1',
+                icon_url: 'https://www.smalltimedevs.com/wp-content/uploads/2024/07/smalltimedevs-secondpage-1024x626.png'
             },
             timestamp: new Date()
         }],
@@ -427,10 +428,10 @@ export const sendMainMenu = async (channel) => {
             }
         )
         .setColor(0x5865F2)
-        .setThumbnail('https://i.imgur.com/AfFp7pu.png')
+        .setThumbnail('https://www.smalltimedevs.com/wp-content/uploads/2024/07/smalltimedevs-secondpage-1024x626.png')
         .setFooter({
-            text: '24/7 Crypto Assistant | Version 1.0',
-            iconURL: 'https://i.imgur.com/AfFp7pu.png'
+            text: '24/7 Crypto Assistant | Version 0.0.1',
+            iconURL: 'https://www.smalltimedevs.com/wp-content/uploads/2024/07/smalltimedevs-secondpage-1024x626.png'
         })
         .setTimestamp();
 
@@ -492,46 +493,93 @@ export const sendApplicationMenu = async (interaction) => {
     });
 };
 
-export const sendChainSelectionForApp = async (interaction, appType) => {
-    const embed = new EmbedBuilder()
-        .setTitle(`Select Chain for ${appType === 'spot' ? 'Spot Trading' : 'Market Making'}`)
-        .setDescription('Choose which blockchain you want to use:')
-        .addFields(
-            { 
-                name: '💫 Solana', 
-                value: 'Fast transactions, low fees' 
-            },
-            { 
-                name: '💧 XRP', 
-                value: 'Quick settlement, cross-border' 
-            }
-        )
-        .setColor(0x0099FF);
-
-    const row = new ActionRowBuilder()
-        .addComponents(
-            new ButtonBuilder()
-                .setCustomId(`${appType}_solana`)
-                .setLabel('Solana')
-                .setStyle(ButtonStyle.Primary)
-                .setEmoji('💫'),
-            new ButtonBuilder()
-                .setCustomId(`${appType}_xrp`)
-                .setLabel('XRP')
-                .setStyle(ButtonStyle.Primary)
-                .setEmoji('💧'),
-            new ButtonBuilder()
-                .setCustomId('back_to_applications')
-                .setLabel('Back')
+/**
+ * Send chain selection menu for an application
+ */
+export async function sendChainSelectionForApp(interaction, appType) {
+    try {
+        const userId = interaction.user.id;
+        let title, description, buttonPrefix;
+        
+        switch (appType) {
+            case 'spot':
+                title = 'Select Blockchain for Spot Trading';
+                description = 'Choose which blockchain you want to use for trading:';
+                buttonPrefix = 'spot_';
+                break;
+            case 'market':
+                title = 'Select Blockchain for Market Making';
+                description = 'Choose which blockchain you want to use for market making:';
+                buttonPrefix = 'market_';
+                break;
+            default:
+                title = 'Select Blockchain';
+                description = 'Choose which blockchain you want to use:';
+                buttonPrefix = '';
+        }
+        
+        const embed = new EmbedBuilder()
+            .setTitle(title)
+            .setDescription(description)
+            .setColor(0x0099FF);
+            
+        // Create Solana button
+        const solanaButton = new ButtonBuilder()
+            .setCustomId(`${buttonPrefix}solana`)
+            .setLabel('Solana')
+            .setStyle(ButtonStyle.Primary)
+            .setEmoji('💫');
+        
+        // If SOL chain is in development, adjust the button accordingly
+        if (!isFeatureAvailable('chains', 'solChain', userId)) {
+            console.log(`[DEBUG] Solana chain in dev mode for user ${userId}`);
+            solanaButton
+                .setLabel('Solana (Dev)')
                 .setStyle(ButtonStyle.Secondary)
-                .setEmoji('↩️')
-        );
-
-    await interaction.update({
-        embeds: [embed],
-        components: [row]
-    });
-};
+                .setEmoji('🚧');
+        }
+        
+        // Create XRP button
+        const xrpButton = new ButtonBuilder()
+            .setCustomId(`${buttonPrefix}xrp`)
+            .setLabel('XRP')
+            .setStyle(ButtonStyle.Primary)
+            .setEmoji('🔶');
+            
+        // Check properly against the nested structure
+        if (!isFeatureAvailable('chains', 'xrpChain', userId)) {
+            console.log(`[DEBUG] XRP chain in dev mode for user ${userId}`);
+            xrpButton
+                .setLabel('XRP (Dev)')
+                .setStyle(ButtonStyle.Secondary)
+                .setEmoji('🚧');
+        }
+        
+        const row = new ActionRowBuilder()
+            .addComponents(
+                solanaButton,
+                xrpButton,
+                new ButtonBuilder()
+                    .setCustomId('back_to_applications')
+                    .setLabel('Back')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('↩️')
+            );
+            
+        await interaction.reply({
+            embeds: [embed],
+            components: [row],
+            ephemeral: true
+        });
+        
+    } catch (error) {
+        console.error(`Error sending ${appType} chain selection menu:`, error);
+        await interaction.reply({
+            content: `❌ Error showing options: ${error.message}. Please try again.`,
+            ephemeral: true
+        });
+    }
+}
 
 export const sendHelpMenu = async (interaction) => {
     await interaction.reply({
@@ -568,7 +616,7 @@ export const sendHelpMenu = async (interaction) => {
             color: 0xF1C40F,
             footer: {
                 text: 'Use the buttons below to navigate',
-                icon_url: 'https://i.imgur.com/AfFp7pu.png'
+                icon_url: 'https://www.smalltimedevs.com/wp-content/uploads/2024/07/smalltimedevs-secondpage-1024x626.png'
             }
         }],
         components: [

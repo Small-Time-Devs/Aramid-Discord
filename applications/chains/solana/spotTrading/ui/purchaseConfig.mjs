@@ -7,6 +7,7 @@ import {
 import { state } from '../solSpotTrading.mjs';
 import { fetchSolBalance } from '../functions/utils.mjs';
 import { getTradeSettings } from '../../../../../src/db/dynamo.mjs';
+import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 
 /**
  * A simpler version of the token purchase config display
@@ -226,15 +227,16 @@ export async function showTokenPurchaseConfig(interaction, tokenDetails, tokenPr
                     .setStyle(ButtonStyle.Secondary)
             );
             
-        // Third row with execute and back buttons
+        // Third row with execute and back buttons - ensure back button has correct ID
         const row3 = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
                     .setCustomId('execute_purchase')
                     .setLabel('Execute Purchase')
-                    .setStyle(ButtonStyle.Success),
+                    .setStyle(ButtonStyle.Success)
+                    .setDisabled(!config.amount),
                 new ButtonBuilder()
-                    .setCustomId('back_to_buy_options')
+                    .setCustomId('back_to_buy_options') // Ensure this ID is correct
                     .setLabel('Back')
                     .setStyle(ButtonStyle.Secondary)
             );
