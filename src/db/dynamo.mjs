@@ -684,3 +684,56 @@ export async function getMarketMakingConfig(userId) {
         return null;
     }
 }
+
+/**
+ * Get user settings from DynamoDB
+ * @param {string} userId - Discord user ID
+ * @returns {Promise<Object|null>} User settings or null if not found
+ */
+export async function getUserSettings(userId) {
+    try {
+        const params = {
+            TableName: process.env.DYNAMODB_SETTINGS_TABLE,
+            Key: {
+                userId: userId
+            }
+        };
+        
+        const result = await dynamoClient.get(params).promise();
+        return result.Item || null;
+    } catch (error) {
+        console.error('Error getting user settings:', error);
+        return null;
+    }
+}
+
+/**
+ * Update user settings in DynamoDB
+ * @param {string} userId - Discord user ID
+ * @param {Object} settings - Settings to update
+ * @returns {Promise<boolean>} Success status
+ */
+export async function updateUserSettings(userId, settings) {
+    try {
+        // First get existing settings to merge with new ones
+        const existingSettings = await getUserSettings(userId) || {};
+        
+        // Merge existing settings with new ones
+        const updatedSettings = { ...existingSettings, ...settings };
+        
+        const params = {
+            TableName: process.env.DYNAMODB_SETTINGS_TABLE,
+            Item: {
+                userId: userId,
+                ...updatedSettings,
+                updatedAt: new Date().toISOString()
+            }
+        };
+        
+        await dynamoClient.put(params).promise();
+        return true;
+    } catch (error) {
+        console.error('Error updating user settings:', error);
+        return false;
+    }
+}

@@ -10,6 +10,7 @@ import {
 import { getTradeSettings, saveTradeSettings } from '../../../../../src/db/dynamo.mjs';
 import { showTradeSettingsMenu } from '../ui/settingsConfig.mjs';
 import { showSolanaSpotTradingMenu } from '../ui/dashboard.mjs';
+import { showChannelsManagementMenu } from '../../../../../src/utils/settingsMenu.mjs';
 
 /**
  * Handle trade settings button
@@ -17,10 +18,71 @@ import { showSolanaSpotTradingMenu } from '../ui/dashboard.mjs';
 export async function handleTradeSettings(interaction) {
     try {
         await interaction.deferUpdate();
-        console.log(`Getting settings for user: ${interaction.user.id}`);
         
-        const settings = await getTradeSettings(interaction.user.id);
-        await showTradeSettingsMenu(interaction, settings);
+        const userId = interaction.user.id;
+        const settings = await getTradeSettings(userId);
+        
+        // Create settings embed
+        const embed = new EmbedBuilder()
+            .setTitle('⚙️ Trading Settings')
+            .setDescription('Configure your trading preferences')
+            .setColor(0x6E0DAD);
+            
+        // Add quick buy settings section
+        embed.addFields({
+            name: '💰 Quick Buy Settings',
+            value: [
+                `Min: ${settings?.minQuickBuy || '0.1'} SOL`,
+                `Medium: ${settings?.mediumQuickBuy || '0.5'} SOL`,
+                `Large: ${settings?.largeQuickBuy || '1.0'} SOL`
+            ].join('\n'),
+            inline: true
+        });
+        
+        // Add quick sell settings section
+        embed.addFields({
+            name: '💱 Quick Sell Settings',
+            value: [
+                `Min: ${settings?.minQuickSell || '25'}%`,
+                `Medium: ${settings?.mediumQuickSell || '50'}%`,
+                `Large: ${settings?.largeQuickSell || '100'}%`
+            ].join('\n'),
+            inline: true
+        });
+        
+        // Create action buttons
+        const row1 = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('set_quick_buy')
+                    .setLabel('Set Quick Buy')
+                    .setStyle(ButtonStyle.Primary),
+                new ButtonBuilder()
+                    .setCustomId('set_quick_sell')
+                    .setLabel('Set Quick Sell')
+                    .setStyle(ButtonStyle.Primary)
+            );
+            
+        // Add channel management button
+        const row2 = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('manage_channels')
+                    .setLabel('Manage Channels')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('📢'),
+                new ButtonBuilder()
+                    .setCustomId('back_to_spot_trading')
+                    .setLabel('Back')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('↩️')
+            );
+        
+        // Send the settings menu
+        await interaction.editReply({
+            embeds: [embed],
+            components: [row1, row2]
+        });
         
     } catch (error) {
         console.error('Error handling trade settings:', error);

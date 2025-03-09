@@ -50,12 +50,26 @@ import { developmentFlags, devFeatureMessage, isWhitelistedForDevFeatures, isFea
 // Update this import to get the function directly from the dashboard file
 import { showSolanaSpotTradingMenu } from '../../applications/chains/solana/spotTrading/ui/dashboard.mjs';
 
+// Add these imports at the top with other imports
+import { 
+    showChannelsManagementMenu,
+    handleRegisterChannel,
+    handleUnregisterChannel,
+    handleSetPrimaryChannel,
+    handleBackToSettings
+} from '../utils/settingsMenu.mjs';
+import { registerUserChannel } from '../utils/channelManager.mjs';
+
 /**
  * Handle application interactions
  */
 export async function handleApplicationInteractions(interaction) {
     try {
         const userId = interaction.user.id;
+        
+        // Auto-register the current channel for the user when they interact with the bot
+        // This helps build the channel list automatically over time
+        await registerUserChannel(userId, interaction.channelId);
 
         // Debug logging for all interactions
         if (interaction.isButton()) {
@@ -429,6 +443,27 @@ export async function handleApplicationInteractions(interaction) {
                     console.log('[DEBUG] Routing to handleQuickBuySelection via case statement');
                     await handleQuickBuySelection(interaction);
                     return;
+                    
+                // Add new cases for channel management
+                case 'manage_channels':
+                    await showChannelsManagementMenu(interaction);
+                    break;
+                    
+                case 'register_current_channel':
+                    await handleRegisterChannel(interaction);
+                    break;
+                    
+                case 'unregister_current_channel':
+                    await handleUnregisterChannel(interaction);
+                    break;
+                    
+                case 'set_primary_channel':
+                    await handleSetPrimaryChannel(interaction);
+                    break;
+                    
+                case 'back_to_settings':
+                    await handleBackToSettings(interaction);
+                    break;
                     
                 default:
                     // Handle token selection buttons
