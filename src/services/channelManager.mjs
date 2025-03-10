@@ -7,7 +7,8 @@ import { getTradeSettings, saveTradeSettings } from '../db/dynamo.mjs';
  * @returns {Promise<Object>} - Discord channel object
  */
 export async function getOrCreateUserChannel(interaction) {
-    const userId = interaction.user.id;
+    // Convert user ID to string to ensure it doesn't exceed Number.MAX_SAFE_INTEGER
+    const userId = String(interaction.user.id);
     const userName = interaction.user.username;
     const guild = interaction.guild;
     
@@ -21,51 +22,107 @@ export async function getOrCreateUserChannel(interaction) {
         if (settings && settings.channelId) {
             console.log(`[CHANNEL] Found existing channel ID in settings: ${settings.channelId}`);
             
+            // Try to find the channel explicitly by name first - more reliable than by ID across instances
+            const channelName = `trading-${userName.toLowerCase()}`;
+            const existingChannelsByName = guild.channels.cache.filter(
+                ch => ch.name === channelName && ch.type === ChannelType.GuildText
+            );
+            
+            console.log(`[CHANNEL] Found ${existingChannelsByName.size} channels matching name "${channelName}"`);
+            
+            // If we found a channel by name, use it
+            if (existingChannelsByName.size > 0) {
+                const existingChannel = existingChannelsByName.first();
+                console.log(`[CHANNEL] Using existing channel by name: ${existingChannel.name} (${existingChannel.id})`);
+                
+                // Update settings if the ID doesn't match - ensure we store as string
+                if (settings.channelId !== String(existingChannel.id)) {
+                    console.log(`[CHANNEL] Updating stored channel ID from ${settings.channelId} to ${existingChannel.id}`);
+                    await saveTradeSettings(userId, {
+                        channelId: String(existingChannel.id),
+                        channelName: existingChannel.name,
+                        guildId: String(guild.id)
+                    });
+                }
+                
+                return existingChannel;
+            }
+            
+            // If we didn't find by name, try to get it by ID
             try {
-                // Try to fetch the existing channel
-                const existingChannel = await guild.channels.fetch(settings.channelId).catch(error => {
-                    // Handle error when the channel is in a different guild
+                // Ensure channel ID is handled as string
+                const channelById = await guild.channels.fetch(String(settings.channelId)).catch(error => {
                     if (error.code === 10003 || error.code === 50001) { // Unknown Channel or Missing Access
-                        console.log(`[CHANNEL] Channel exists in a different Discord server, creating new channel`);
+                        console.log(`[CHANNEL] Channel with ID ${settings.channelId} not found or not accessible`);
                         return null;
                     }
                     throw error; // Re-throw any other errors
                 });
                 
-                // If channel exists and we have access, return it
-                if (existingChannel) {
-                    console.log(`[CHANNEL] Retrieved existing channel: ${existingChannel.name}`);
-                    return existingChannel;
+                if (channelById) {
+                    console.log(`[CHANNEL] Successfully retrieved channel by ID: ${channelById.name} (${channelById.id})`);
+                    return channelById;
                 }
                 
-                // If we reached here, the channel wasn't found or accessible in this guild
-                console.log('[CHANNEL] Could not access the existing channel, creating new one');
+                console.log('[CHANNEL] Could not find channel by ID, will create a new one');
             } catch (err) {
-                // Handle "Missing Access" error specifically (user is in different Discord server)
                 if (err.code === 50001 || err.message.includes('Missing Access')) {
                     console.log(`[CHANNEL] Failed to fetch existing channel: ${err.message}`);
-                    // We'll fall through to create a new channel
                 } else {
-                    // For any other error, re-throw
-                    throw err;
+                    // For any other error, log but continue
+                    console.error(`[CHANNEL] Error fetching channel:`, err);
                 }
+                // We'll fall through to create a new channel
             }
+        }
+        
+        // Check if the channel already exists by name (even if not in settings)
+        const channelName = `trading-${userName.toLowerCase()}`;
+        const existingChannel = guild.channels.cache.find(
+            ch => ch.name === channelName && 
+            ch.type === ChannelType.GuildText
+        );
+        
+        if (existingChannel) {
+            console.log(`[CHANNEL] Found existing channel by name: ${existingChannel.name} (${existingChannel.id})`);
+            
+            // Update settings with this channel - ensure IDs are stored as strings
+            await saveTradeSettings(userId, {
+                channelId: String(existingChannel.id),
+                channelName: existingChannel.name,
+                guildId: String(guild.id)
+            });
+            
+            return existingChannel;
         }
         
         // Create a new channel - we reach here if:
         // - User doesn't have a channel ID in settings
         // - The channel ID doesn't exist anymore
-        // - The channel exists in a different Discord server we can't access
+        // - No channel with the expected name exists
         console.log(`[CHANNEL] Creating new channel for user ${userName}`);
+        
+        // First, try to find the "Trading" category
+        const tradingCategoryName = process.env.TRADING_CATEGORY_NAME || 'Trading';
+        console.log(`[CHANNEL] Looking for category: ${tradingCategoryName}`);
+        
+        let tradingCategory = guild.channels.cache.find(
+            ch => ch.type === ChannelType.GuildCategory && ch.name === tradingCategoryName
+        );
+        
+        // If trading category doesn't exist, create it
+        if (!tradingCategory) {
+            console.log(`[CHANNEL] Creating new category: ${tradingCategoryName}`);
+            tradingCategory = await guild.channels.create({
+                name: tradingCategoryName,
+                type: ChannelType.GuildCategory
+            });
+        }
         
         // Get admin role for permissions
         const adminRoleName = process.env.ADMIN_ROLE_NAME || 'Aramid-Admin';
         console.log(`[CHANNEL] Adding admin role permissions: ${adminRoleName}`);
         const adminRole = guild.roles.cache.find(role => role.name === adminRoleName);
-        
-        // Set up channel permissions
-        const channelName = `trading-${userName.toLowerCase()}`;
-        console.log(`[CHANNEL] Creating channel with name: ${channelName}`);
         
         // Create permission overwrites for the channel
         const permissionOverwrites = [
@@ -93,21 +150,23 @@ export async function getOrCreateUserChannel(interaction) {
             });
         }
         
-        // Create the channel
+        // Create the channel and place it in the Trading category
         const channel = await guild.channels.create({
             name: channelName,
             type: ChannelType.GuildText,
             topic: `Personal trading channel for ${userName} (${userId})`,
+            parent: tradingCategory.id, // Set the category ID
             permissionOverwrites
         });
         
-        console.log(`[CHANNEL] Created channel ${channelName} (${channel.id}) for user ${userName}`);
+        console.log(`[CHANNEL] Created channel ${channelName} (${channel.id}) for user ${userName} in category ${tradingCategory.name}`);
         
-        // Save the channel information to the user's settings
+        // Save the channel information to the user's settings - ensure all IDs are saved as strings
         const updatedSettings = {
-            channelId: channel.id,
+            channelId: String(channel.id),
             channelName: channel.name,
-            guildId: guild.id
+            guildId: String(guild.id),
+            categoryId: String(tradingCategory.id)
         };
         await saveTradeSettings(userId, updatedSettings);
         console.log(`[CHANNEL] Saved channel information to trade settings for ${userName}`);
@@ -127,6 +186,9 @@ export async function getOrCreateUserChannel(interaction) {
  */
 export async function getUserChannelById(userId, guild) {
     try {
+        // Ensure userId is a string
+        userId = String(userId);
+        
         // Use the existing getTradeSettings function
         const userSettings = await getTradeSettings(userId);
         
@@ -161,12 +223,12 @@ export async function getUserChannelById(userId, guild) {
 export async function saveChannelInfo(userId, channelId, channelName, guildId) {
     try {
         console.log(`[CHANNEL] Saving channel ${channelId} info for user ${userId}`);
-        // Use the existing saveTradeSettings function to store channel data
-        // IMPORTANT: Ensure all IDs are strings
-        await saveTradeSettings(userId, {
-            channelId: String(channelId), // Ensure ID is a string
+        
+        // Ensure ALL IDs are strings
+        await saveTradeSettings(String(userId), {
+            channelId: String(channelId),
             channelName: channelName,
-            guildId: String(guildId) // Ensure ID is a string
+            guildId: String(guildId)
         });
         return true;
     } catch (error) {

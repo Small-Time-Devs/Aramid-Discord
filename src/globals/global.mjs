@@ -55,7 +55,7 @@ export const developmentFlags = {
 };
 
 export const globalDevModeWhiteList = [
-    //'202145535086297088'
+    '202145535086297088'
 ];
 
 // Helper function to check if a user is whitelisted for dev features
