@@ -1,4 +1,7 @@
+// Only import the dashboard, don't re-export it
 import { showMarketMakerDashboard } from './ui/dashboard.mjs';
+
+// Import the action handlers
 import { 
     handleMarketMakerSettings,
     showSpreadSettingsModal,
@@ -23,9 +26,8 @@ import {
     handleBackToMarketMaker
 } from './actions/marketMakingControl.mjs';
 
-// Export everything for backward compatibility
+// Export actions but NOT the dashboard
 export {
-    showMarketMakerDashboard,
     handleMarketMakerSettings,
     showSpreadSettingsModal,
     handleSpreadSettingsSubmit,
@@ -43,7 +45,7 @@ export {
     handleBackToMarketMaker
 };
 
-// Export shared state that needs to be accessible across files
+// Export shared state
 export const state = {
     marketMakerConfig: {},
     activeSessions: {},

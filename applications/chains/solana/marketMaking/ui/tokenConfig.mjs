@@ -5,86 +5,88 @@ import {
     ButtonStyle 
 } from 'discord.js';
 import { state } from '../marketMakerMain.mjs';
-import { fetchTokenPrice } from '../../spotTrading/functions/utils.mjs';
+import { fetchSolBalance } from '../../spotTrading/functions/utils.mjs';
 
 /**
- * Show token configuration for market making
+ * Show token market making configuration UI
+ * @param {Object} interaction - Discord interaction
+ * @param {Object} tokenDetails - Token details object
+ * @param {number} tokenBalance - User's token balance
  */
-export async function showTokenMakingConfig(interaction, tokenDetails, tokenBalance) {
+export async function showTokenMakingConfig(interaction, tokenDetails, tokenBalance = null) {
     try {
         const userId = interaction.user.id;
         const config = state.marketMakerConfig[userId];
         
         if (!config) {
-            throw new Error('Market maker configuration not found');
+            throw new Error('Market making configuration not found');
         }
         
-        // Get token price if available
-        const tokenPrice = await fetchTokenPrice(config.tokenMint);
-        
-        // Format token information 
+        // Get the token details
         const tokenName = tokenDetails?.name || 'Unknown Token';
-        const tokenSymbol = tokenDetails?.symbol || 'UNKNOWN';
+        const tokenSymbol = tokenDetails?.symbol || '';
+        
+        // Create the display name
         const displayName = tokenSymbol ? `${tokenName} (${tokenSymbol})` : tokenName;
-        const formattedPrice = tokenPrice ? `$${tokenPrice}` : 'Unknown';
         
         // Create the embed
         const embed = new EmbedBuilder()
-            .setTitle('Market Maker Token Configuration')
-            .setColor(0x6E0DAD) // Purple for market making
+            .setTitle('Market Making Configuration')
+            .setColor(0x6E0DAD)
             .addFields(
-                { 
-                    name: 'Selected Token', 
-                    value: displayName, 
-                    inline: true 
-                },
-                { 
-                    name: 'Current Price', 
-                    value: formattedPrice, 
-                    inline: true 
-                },
                 {
-                    name: 'Your Balance',
-                    value: tokenBalance ? `${tokenBalance} tokens` : 'Unknown',
+                    name: 'Selected Token',
+                    value: displayName,
                     inline: true
                 },
-                { 
-                    name: 'Contract Address', 
-                    value: `\`${config.tokenMint}\``, 
-                    inline: false 
+                {
+                    name: 'Token Address',
+                    value: `\`${config.tokenMint}\``,
+                    inline: false
                 }
             );
-            
-        // Add current settings if they exist
-        if (config.spreadPercentage || config.priceRange) {
-            embed.addFields({
+        
+        // Add token balance if available
+        if (tokenBalance !== null) {
+            embed.addFields(
+                {
+                    name: 'Your Balance',
+                    value: `${tokenBalance} tokens`,
+                    inline: true
+                }
+            );
+        }
+        
+        // Add current configuration
+        embed.addFields(
+            {
                 name: 'Market Making Settings',
                 value: [
-                    `**Spread:** ${config.spreadPercentage || 1}%`,
-                    `**Price Range:** ${config.priceRange || 5}%`,
-                    `**Auto-adjust:** ${config.autoAdjust ? 'Enabled' : 'Disabled'}`
+                    `Spread: ${config.spreadPercentage || 1}%`,
+                    `Price Range: ${config.priceRange || 5}%`,
+                    `Auto-Adjust: ${config.autoAdjust !== false ? 'Enabled' : 'Disabled'}`
                 ].join('\n'),
                 inline: false
-            });
-        }
-            
+            }
+        );
+        
         // Create button rows
         const row1 = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
-                    .setCustomId('set_spread')
+                    .setCustomId('set_mm_spread')
                     .setLabel('Set Spread')
                     .setStyle(ButtonStyle.Primary),
                 new ButtonBuilder()
-                    .setCustomId('set_price_range')
-                    .setLabel('Set Price Range')
+                    .setCustomId('set_mm_range')
+                    .setLabel('Set Range')
                     .setStyle(ButtonStyle.Primary),
                 new ButtonBuilder()
                     .setCustomId('toggle_auto_adjust')
-                    .setLabel(config.autoAdjust ? 'Disable Auto-adjust' : 'Enable Auto-adjust')
+                    .setLabel(config.autoAdjust !== false ? 'Disable Auto-Adjust' : 'Enable Auto-Adjust')
                     .setStyle(ButtonStyle.Secondary)
             );
-            
+        
         const row2 = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
@@ -94,28 +96,20 @@ export async function showTokenMakingConfig(interaction, tokenDetails, tokenBala
                 new ButtonBuilder()
                     .setCustomId('back_to_mm_dashboard')
                     .setLabel('Back')
-                    .setStyle(ButtonStyle.Secondary)
-                    .setEmoji('↩️')
+                    .setStyle(ButtonStyle.Danger)
             );
-            
-        await interaction.update({
+        
+        // Send the configuration UI
+        await interaction.editReply({
             embeds: [embed],
             components: [row1, row2]
         });
         
     } catch (error) {
         console.error('Error showing token market making config:', error);
-        
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({
-                content: `❌ Error loading configuration: ${error.message}. Please try again.`,
-                ephemeral: true
-            });
-        } else {
-            await interaction.followUp({
-                content: `❌ Error loading configuration: ${error.message}. Please try again.`,
-                ephemeral: true
-            });
-        }
+        await interaction.followUp({
+            content: `❌ Error: ${error.message}. Please try again.`,
+            ephemeral: true
+        });
     }
 }

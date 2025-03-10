@@ -246,6 +246,8 @@ export async function handlePopularTokenSelect(interaction) {
  */
 export async function handleTokenAddressInput(interaction) {
     try {
+        console.log('Opening token address modal for market making');
+        
         // Create the modal for token address input
         const modal = new ModalBuilder()
             .setCustomId('mm_token_address_modal')

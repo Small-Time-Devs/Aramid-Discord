@@ -42,8 +42,6 @@ import {
     handleExecuteSell
 } from '../../applications/chains/solana/spotTrading/actions/tokenSelling.mjs';
 
-import { showMarketMakerDashboard } from '../../applications/chains/solana/marketMaking/ui/dashboard.mjs';
-
 // Add this import at the top with other imports
 import { developmentFlags, devFeatureMessage, isWhitelistedForDevFeatures, isFeatureAvailable, logFeatureStatus } from '../globals/global.mjs';
 
@@ -59,6 +57,26 @@ import {
     handleBackToSettings
 } from '../utils/settingsMenu.mjs';
 import { registerUserChannel } from '../utils/channelManager.mjs';
+
+// Import the market making functions
+import {
+    handleMarketMakerSettings,
+    handleTokenSelection as handleMarketMakerTokenSelection,  // Rename to avoid conflicts
+    showSpreadSettingsModal,
+    handleSpreadSettingsSubmit,
+    handleRangeSettingsModal,
+    handleRangeSettingsSubmit,
+    handleTokenAddressInput as handleMarketMakerTokenAddressInput,  // Rename to avoid conflicts
+    handleTokenAddressSubmit as handleMarketMakerTokenAddressSubmit,  // Rename to avoid conflicts
+    handleBackToMarketMaker,
+    handlePopularTokenSelect as handleMarketMakerPopularTokenSelect,  // Rename to avoid conflicts
+    handleStartMarketMaking,
+    handleStopMarketMaking,
+    handleViewMarketMakingStats
+} from '../../applications/chains/solana/marketMaking/marketMakerMain.mjs';
+
+// Import dashboard separately to avoid duplicate declaration
+import { showMarketMakerDashboard } from '../../applications/chains/solana/marketMaking/ui/dashboard.mjs';
 
 /**
  * Handle application interactions
@@ -465,6 +483,53 @@ export async function handleApplicationInteractions(interaction) {
                     await handleBackToSettings(interaction);
                     break;
                     
+                // Market Making Module
+                case 'SOLANA_MARKET_MAKING':
+                    await showMarketMakerDashboard(interaction);
+                    break;
+                
+                case 'select_mm_token':
+                    await handleMarketMakerTokenSelection(interaction);
+                    break;
+                    
+                case 'mm_settings':
+                    await handleMarketMakerSettings(interaction);
+                    break;
+                    
+                case 'mm_enter_token_address':
+                    await handleMarketMakerTokenAddressInput(interaction);
+                    break;
+                    
+                case 'back_to_mm_dashboard':
+                    await handleBackToMarketMaker(interaction);
+                    break;
+                    
+                case 'set_mm_spread':
+                    await showSpreadSettingsModal(interaction);
+                    break;
+                    
+                case 'set_mm_range':
+                    await handleRangeSettingsModal(interaction);
+                    break;
+                    
+                case 'start_market_making':
+                    await handleStartMarketMaking(interaction);
+                    break;
+                    
+                case 'stop_market_making':
+                    await handleStopMarketMaking(interaction);
+                    break;
+                    
+                case 'view_mm_stats':
+                    await handleViewMarketMakingStats(interaction);
+                    break;
+                
+                // Handle popular token selections for market making
+                // These buttons have a prefix of mm_popular_token_
+                case interaction.customId.startsWith('mm_popular_token_') ? interaction.customId : '':
+                    await handleMarketMakerPopularTokenSelect(interaction);
+                    break;
+                    
                 default:
                     // Handle token selection buttons
                     if (interaction.customId.startsWith('buy_more_')) {
@@ -477,6 +542,27 @@ export async function handleApplicationInteractions(interaction) {
                         await handlePriorityFeeSelection(interaction);
                     }
                     break;
+            }
+        }
+
+        // Handle modal submissions
+        if (interaction.isModalSubmit()) {
+            switch (interaction.customId) {
+                // ... existing modal cases ...
+                
+                case 'mm_token_address_modal':
+                    await handleMarketMakerTokenAddressSubmit(interaction);
+                    break;
+                    
+                case 'mm_spread_modal':
+                    await handleSpreadSettingsSubmit(interaction);
+                    break;
+                    
+                case 'mm_range_modal':
+                    await handleRangeSettingsSubmit(interaction);
+                    break;
+                    
+                // ... more modal cases ...
             }
         }
 
