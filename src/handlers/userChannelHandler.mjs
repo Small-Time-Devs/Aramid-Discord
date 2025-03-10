@@ -82,29 +82,22 @@ async function sendCryptoResearchMenu(channel, user) {
 }
 
 /**
- * Redirects a user to their personal trading channel and starts the bot there
+ * Redirect user to their personal channel
  * @param {Object} interaction - Discord interaction
  */
 export async function redirectToPersonalChannel(interaction) {
     try {
-        console.log(`[CHANNEL] Creating personal channel for user ${interaction.user.id}`);
+        console.log('[CHANNEL] Creating personal channel for user', interaction.user.id);
+        
+        // First defer the reply
         await interaction.deferReply({ ephemeral: true });
         
-        // Add explicit debug logs to track execution
         console.log('[CHANNEL] About to call getOrCreateUserChannel');
-        
-        // Get or create user's personal channel
         const userChannel = await getOrCreateUserChannel(interaction);
-        console.log(`[CHANNEL] Channel obtained: ${userChannel ? userChannel.id : 'none'}`);
+        console.log('[CHANNEL] Channel obtained:', userChannel.id);
         
-        if (!userChannel) {
-            throw new Error('Failed to create or find personal channel');
-        }
-        
-        // More explicit logging
+        // Create the welcome message in the user's channel
         console.log('[CHANNEL] Creating welcome embed');
-        
-        // First send a brief welcome message to the user's channel
         const welcomeEmbed = new EmbedBuilder()
             .setTitle('Welcome to Your Personal Trading Channel!')
             .setDescription(`Hello ${interaction.user.toString()}, this is your dedicated channel for trading with Aramid Bot.`)
@@ -112,49 +105,53 @@ export async function redirectToPersonalChannel(interaction) {
             .addFields(
                 { name: 'Privacy', value: 'Only you and server admins can see this channel.', inline: false }
             );
-        
+
         console.log('[CHANNEL] Sending welcome message to channel');
-        
-        // Send the welcome message to the user's channel
         await userChannel.send({
             content: `${interaction.user.toString()} Welcome to your personal trading channel!`,
             embeds: [welcomeEmbed]
-        }).catch(err => console.error(`[CHANNEL] Error sending welcome message:`, err));
-        
-        // Now send the full crypto research assistant menu
+        });
+
         console.log('[CHANNEL] Sending crypto research menu');
-        await sendCryptoResearchMenu(userChannel, interaction.user)
-            .catch(err => console.error(`[CHANNEL] Error sending crypto menu:`, err));
+        // Show the applications menu in the user's channel
+        await sendCryptoResearchMenu(userChannel, interaction.user);
+
+        // Send a temporary non-ephemeral message that we can delete
+        const redirectMessage = await interaction.channel.send({
+            content: `${interaction.user.toString()} I've created a personal trading channel for you: <#${userChannel.id}>. Please continue there!`,
+        });
         
-        console.log('[CHANNEL] Sending redirect message to user');
-        
-        // Redirect the user to their channel
+        // Delete the message after 10 seconds
+        setTimeout(() => {
+            redirectMessage.delete().catch(err => {
+                console.error('Error deleting redirect message:', err);
+            });
+        }, 10000);
+
+        // Update the original ephemeral message
         await interaction.editReply({
-            content: `I've created a personal trading channel for you: <#${userChannel.id}>. Please continue there!`,
+            content: "✅ Your personal trading channel is ready!",
             ephemeral: true
-        }).catch(err => console.error(`[CHANNEL] Error sending redirect:`, err));
-        
-        console.log(`[CHANNEL] Successfully created channel and sent welcome message for ${interaction.user.id}`);
+        });
+
+        console.log('[CHANNEL] Successfully created channel and sent welcome message for', interaction.user.id);
         
     } catch (error) {
-        console.error(`[CHANNEL] Error redirecting to personal channel:`, error);
-        
-        await interaction.editReply({
-            content: `Sorry, I couldn't create your personal channel: ${error.message}. Please contact an admin.`,
+        console.error('[CHANNEL] Error creating personal channel:', error);
+        await interaction.followUp({
+            content: `❌ Error creating personal channel: ${error.message}`,
             ephemeral: true
-        }).catch(err => console.error(`[CHANNEL] Error sending failure response:`, err));
+        });
     }
 }
 
-// Update the handler for the new button ID
+/**
+ * Handle interactions in personal channels
+ */
 export async function handlePersonalChannelInteraction(interaction) {
-    // Add debug logging
-    console.log(`[DEBUG] Checking if ${interaction.customId || 'unknown'} is in a personal channel`);
-    
     // Check if this is a personal channel
     const channelTopic = interaction.channel?.topic;
     if (!channelTopic || !channelTopic.includes('Personal trading channel for')) {
-        console.log('[DEBUG] Not a personal channel, skipping specialized handler');
         return false; // Not a personal channel, let other handlers process it
     }
     
@@ -166,15 +163,12 @@ export async function handlePersonalChannelInteraction(interaction) {
     }
     
     const channelUserId = userIdMatch[1];
-    console.log(`[DEBUG] Channel belongs to user ${channelUserId}, interaction from ${interaction.user.id}`);
     
     // Allow admins to use any channel
     const isAdmin = interaction.member?.permissions.has('ADMINISTRATOR');
     
     // If this is not the user's personal channel (and they're not admin), block the interaction
     if (channelUserId !== interaction.user.id && !isAdmin) {
-        console.log(`[DEBUG] User ${interaction.user.id} tried to use another user's channel`);
-        
         if (interaction.isButton() || interaction.isCommand()) {
             await interaction.reply({
                 content: "This is someone else's personal trading channel. Please use your own channel or the main bot commands.",
@@ -185,24 +179,22 @@ export async function handlePersonalChannelInteraction(interaction) {
         return false;
     }
     
-    // Handle the new dashboard button
+    // Handle the trading dashboard button
     if (interaction.isButton() && interaction.customId === 'show_trading_dashboard') {
-        console.log('[CHANNEL] Opening trading dashboard');
         try {
-            await interaction.deferUpdate().catch(err => console.log('[CHANNEL] Error deferring update:', err));
+            await interaction.deferUpdate();
             await showSolanaSpotTradingMenu(interaction);
             return true;
         } catch (error) {
-            console.error('[CHANNEL] Error showing trading dashboard:', error);
+            console.error('Error showing trading dashboard:', error);
             await interaction.followUp({
                 content: `Error opening dashboard: ${error.message}`,
                 ephemeral: true
-            }).catch(err => console.error('[CHANNEL] Error sending error response:', err));
+            });
             return true;
         }
     }
     
     // Let the regular handlers process other interactions
-    console.log('[DEBUG] Letting regular handlers process interaction in personal channel');
     return false;
 }

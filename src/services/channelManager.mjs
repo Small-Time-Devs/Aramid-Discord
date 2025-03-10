@@ -1,143 +1,121 @@
-import { ChannelType, PermissionFlagsBits } from 'discord.js';
+import { PermissionsBitField, ChannelType } from 'discord.js';
 import { getTradeSettings, saveTradeSettings } from '../db/dynamo.mjs';
 
 /**
- * Creates a dedicated channel for a user or returns existing one
- * @param {Object} interaction - The Discord interaction
- * @returns {Promise<Object>} - Channel object
+ * Get or create a personal trading channel for a user
+ * @param {Object} interaction - Discord interaction
+ * @returns {Promise<Object>} - Discord channel object
  */
 export async function getOrCreateUserChannel(interaction) {
+    const userId = interaction.user.id;
+    const userName = interaction.user.username;
+    const guild = interaction.guild;
+    
+    console.log(`[CHANNEL] Checking if user ${userName} (${userId}) already has a channel`);
+    
     try {
-        const userId = interaction.user.id;
-        const username = interaction.user.username;
-        const guildId = interaction.guild?.id;
+        // Get the user's settings from the database
+        const settings = await getTradeSettings(userId);
         
-        if (!guildId) {
-            console.error('No guild found in interaction');
-            throw new Error('This command must be used in a server');
-        }
-        
-        console.log(`[CHANNEL] Checking if user ${username} (${userId}) already has a channel`);
-        
-        // Check if user already has a channel stored in their settings
-        const userSettings = await getTradeSettings(userId);
-        
-        // If the user has channelId in their settings, try to find it
-        if (userSettings && userSettings.channelId) {
-            console.log(`[CHANNEL] Found existing channel ID in settings: ${userSettings.channelId}`);
+        // Check if the user already has a channel ID saved
+        if (settings && settings.channelId) {
+            console.log(`[CHANNEL] Found existing channel ID in settings: ${settings.channelId}`);
             
-            // Get the actual channel object
             try {
-                const channel = await interaction.guild.channels.fetch(userSettings.channelId);
-                if (channel) {
-                    console.log(`[CHANNEL] Retrieved existing channel: ${channel.name}`);
-                    return channel;
-                } else {
-                    console.log(`[CHANNEL] Channel ${userSettings.channelId} no longer exists, will create a new one`);
+                // Try to fetch the existing channel
+                const existingChannel = await guild.channels.fetch(settings.channelId).catch(error => {
+                    // Handle error when the channel is in a different guild
+                    if (error.code === 10003 || error.code === 50001) { // Unknown Channel or Missing Access
+                        console.log(`[CHANNEL] Channel exists in a different Discord server, creating new channel`);
+                        return null;
+                    }
+                    throw error; // Re-throw any other errors
+                });
+                
+                // If channel exists and we have access, return it
+                if (existingChannel) {
+                    console.log(`[CHANNEL] Retrieved existing channel: ${existingChannel.name}`);
+                    return existingChannel;
                 }
-            } catch (channelError) {
-                console.error(`[CHANNEL] Failed to fetch existing channel:`, channelError);
-                // Will proceed to create a new channel
+                
+                // If we reached here, the channel wasn't found or accessible in this guild
+                console.log('[CHANNEL] Could not access the existing channel, creating new one');
+            } catch (err) {
+                // Handle "Missing Access" error specifically (user is in different Discord server)
+                if (err.code === 50001 || err.message.includes('Missing Access')) {
+                    console.log(`[CHANNEL] Failed to fetch existing channel: ${err.message}`);
+                    // We'll fall through to create a new channel
+                } else {
+                    // For any other error, re-throw
+                    throw err;
+                }
             }
-        } else {
-            console.log(`[CHANNEL] No channel ID found in user settings, will create one`);
         }
         
-        // Create a new channel
-        console.log(`[CHANNEL] Creating new channel for user ${username}`);
+        // Create a new channel - we reach here if:
+        // - User doesn't have a channel ID in settings
+        // - The channel ID doesn't exist anymore
+        // - The channel exists in a different Discord server we can't access
+        console.log(`[CHANNEL] Creating new channel for user ${userName}`);
         
-        // Find the "Trading" category or create it if it doesn't exist
-        let category = interaction.guild.channels.cache.find(
-            c => c.type === ChannelType.GuildCategory && c.name === 'Trading'
-        );
+        // Get admin role for permissions
+        const adminRoleName = process.env.ADMIN_ROLE_NAME || 'Aramid-Admin';
+        console.log(`[CHANNEL] Adding admin role permissions: ${adminRoleName}`);
+        const adminRole = guild.roles.cache.find(role => role.name === adminRoleName);
         
-        if (!category) {
-            console.log('[CHANNEL] Creating Trading category');
-            category = await interaction.guild.channels.create({
-                name: 'Trading',
-                type: ChannelType.GuildCategory
-            });
-        }
+        // Set up channel permissions
+        const channelName = `trading-${userName.toLowerCase()}`;
+        console.log(`[CHANNEL] Creating channel with name: ${channelName}`);
         
-        // Permission overwrites for the new channel
+        // Create permission overwrites for the channel
         const permissionOverwrites = [
             {
-                id: interaction.guild.roles.everyone.id,
-                deny: [PermissionFlagsBits.ViewChannel]
+                // Default role (@everyone) - deny access
+                id: guild.id,
+                deny: [PermissionsBitField.Flags.ViewChannel]
             },
             {
+                // User - allow access to their personal channel
                 id: userId,
                 allow: [
-                    PermissionFlagsBits.ViewChannel,
-                    PermissionFlagsBits.SendMessages,
-                    PermissionFlagsBits.ReadMessageHistory
-                ]
-            },
-            // Give bot permissions to the channel
-            {
-                id: interaction.client.user.id,
-                allow: [
-                    PermissionFlagsBits.ViewChannel,
-                    PermissionFlagsBits.SendMessages,
-                    PermissionFlagsBits.ReadMessageHistory,
-                    PermissionFlagsBits.ManageMessages,
-                    PermissionFlagsBits.EmbedLinks,
-                    PermissionFlagsBits.AttachFiles
+                    PermissionsBitField.Flags.ViewChannel,
+                    PermissionsBitField.Flags.SendMessages,
+                    PermissionsBitField.Flags.ReadMessageHistory
                 ]
             }
         ];
         
-        // Add server admins/mods to the channel permissions if needed
-        const adminRole = interaction.guild.roles.cache.find(role => 
-            role.name === 'Admin' || 
-            role.name === 'Administrator' || 
-            role.permissions.has(PermissionFlagsBits.Administrator)
-        );
-        
+        // Add admin role permissions if available
         if (adminRole) {
-            console.log(`[CHANNEL] Adding admin role permissions: ${adminRole.name}`);
             permissionOverwrites.push({
                 id: adminRole.id,
-                allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages]
+                allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages]
             });
         }
         
-        // Create the user's personal channel
-        // Remove special characters and spaces from username to create a valid channel name
-        const userDisplayName = username.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-        const channelName = `trading-${userDisplayName}`;
+        // Create the channel
+        const channel = await guild.channels.create({
+            name: channelName,
+            type: ChannelType.GuildText,
+            topic: `Personal trading channel for ${userName} (${userId})`,
+            permissionOverwrites
+        });
         
-        console.log(`[CHANNEL] Creating channel with name: ${channelName}`);
+        console.log(`[CHANNEL] Created channel ${channelName} (${channel.id}) for user ${userName}`);
         
-        try {
-            const channel = await interaction.guild.channels.create({
-                name: channelName,
-                type: ChannelType.GuildText,
-                parent: category.id,
-                permissionOverwrites: permissionOverwrites,
-                topic: `Personal trading channel for ${interaction.user.tag} (${userId})`
-            });
-            
-            console.log(`[CHANNEL] Created channel ${channel.name} (${channel.id}) for user ${username}`);
-            
-            // Save the channel info along with user's trade settings
-            // IMPORTANT: Convert all IDs to strings to avoid integer overflow issues
-            await saveTradeSettings(userId, {
-                channelId: String(channel.id), // Ensure ID is a string
-                channelName: channel.name,
-                guildId: String(guildId), // Ensure ID is a string
-            });
-            
-            console.log(`[CHANNEL] Saved channel information to trade settings for ${username}`);
-            
-            return channel;
-        } catch (createError) {
-            console.error(`[CHANNEL] Error creating channel:`, createError);
-            throw new Error(`Failed to create channel: ${createError.message}`);
-        }
+        // Save the channel information to the user's settings
+        const updatedSettings = {
+            channelId: channel.id,
+            channelName: channel.name,
+            guildId: guild.id
+        };
+        await saveTradeSettings(userId, updatedSettings);
+        console.log(`[CHANNEL] Saved channel information to trade settings for ${userName}`);
+        
+        return channel;
     } catch (error) {
-        console.error(`[CHANNEL] Error in getOrCreateUserChannel:`, error);
-        throw error;
+        console.error(`[CHANNEL] Error creating channel for ${userName}:`, error);
+        throw new Error(`Failed to create channel: ${error.message}`);
     }
 }
 
