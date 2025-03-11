@@ -18,48 +18,13 @@ import { saveMarketMakingConfig } from '../../../../../src/db/dynamo.mjs';
  */
 export async function handleMarketMakerSettings(interaction) {
     try {
-        await interaction.deferUpdate();
-        
-        const userId = interaction.user.id;
-        const config = state.marketMakerConfig[userId];
-        
-        if (!config || !config.tokenMint) {
-            // If no token selected, direct user to token selection
-            const embed = new EmbedBuilder()
-                .setTitle('Select Token First')
-                .setDescription('You need to select a token for market making before configuring settings.')
-                .setColor(0xFF9900);
-                
-            const row = new ActionRowBuilder()
-                .addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('select_mm_token')
-                        .setLabel('Select Token')
-                        .setStyle(ButtonStyle.Primary),
-                    new ButtonBuilder()
-                        .setCustomId('back_to_mm_dashboard')
-                        .setLabel('Back')
-                        .setStyle(ButtonStyle.Secondary)
-                        .setEmoji('↩️')
-                );
-                
-            await interaction.editReply({
-                embeds: [embed],
-                components: [row]
-            });
-            return;
-        }
-        
-        // Fetch token details
-        const tokenDetails = await fetchTokenDetails(config.tokenMint);
-        
-        // Show token configuration screen
-        await showTokenMakingConfig(interaction, tokenDetails);
-        
+        // Import the showMarketMakingSettings function dynamically
+        const { showMarketMakingSettings } = await import('../ui/settingsMenu.mjs');
+        await showMarketMakingSettings(interaction);
     } catch (error) {
         console.error('Error handling market maker settings:', error);
         await interaction.followUp({
-            content: `❌ Error loading settings: ${error.message}. Please try again.`,
+            content: `❌ Error loading settings: ${error.message}`,
             ephemeral: true
         });
     }
@@ -456,5 +421,289 @@ export async function handleAdvancedSettingsSubmit(interaction) {
                 ephemeral: true
             });
         }
+    }
+}
+
+/**
+ * Show modal for slippage input
+ */
+export async function showSlippageModal(interaction) {
+    try {
+        const userId = interaction.user.id;
+        const config = state.marketMakerConfig[userId] || {};
+        
+        const modal = new ModalBuilder()
+            .setCustomId('mm_slippage_modal')
+            .setTitle('Set Slippage Percentage');
+
+        const slippageInput = new TextInputBuilder()
+            .setCustomId('slippage_percentage')
+            .setLabel('Slippage Percentage')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('0.5')
+            .setValue(config.slippage ? config.slippage.toString() : '0.5')
+            .setRequired(true);
+
+        modal.addComponents(new ActionRowBuilder().addComponents(slippageInput));
+        await interaction.showModal(modal);
+        
+    } catch (error) {
+        console.error('Error showing slippage modal:', error);
+        await interaction.reply({
+            content: `❌ Error: ${error.message}`,
+            ephemeral: true
+        });
+    }
+}
+
+/**
+ * Handle slippage modal submission
+ */
+export async function handleSlippageSubmit(interaction) {
+    try {
+        const slippage = parseFloat(interaction.fields.getTextInputValue('slippage_percentage'));
+        const userId = interaction.user.id;
+        
+        if (isNaN(slippage) || slippage < 0.1 || slippage > 100) {
+            await interaction.reply({
+                content: '❌ Please enter a valid slippage between 0.1 and 100%',
+                ephemeral: true
+            });
+            return;
+        }
+        
+        // Update the config
+        state.marketMakerConfig[userId].slippage = slippage;
+        
+        await interaction.deferUpdate();
+        
+        // Show updated settings
+        const { showMarketMakingSettings } = await import('../ui/settingsMenu.mjs');
+        await showMarketMakingSettings(interaction);
+        
+        await interaction.followUp({
+            content: `✅ Slippage set to ${slippage}%`,
+            ephemeral: true
+        });
+        
+    } catch (error) {
+        console.error('Error handling slippage submission:', error);
+        await interaction.reply({
+            content: `❌ Error: ${error.message}`,
+            ephemeral: true
+        });
+    }
+}
+
+/**
+ * Show number of wallets modal
+ */
+export async function showWalletsModal(interaction) {
+    try {
+        const userId = interaction.user.id;
+        const config = state.marketMakerConfig[userId] || {};
+        
+        const modal = new ModalBuilder()
+            .setCustomId('mm_wallets_modal')
+            .setTitle('Set Number of Trading Wallets');
+
+        const walletsInput = new TextInputBuilder()
+            .setCustomId('number_of_wallets')
+            .setLabel('Number of Wallets')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('5')
+            .setValue(config.numberOfWallets ? config.numberOfWallets.toString() : '5')
+            .setRequired(true);
+
+        modal.addComponents(new ActionRowBuilder().addComponents(walletsInput));
+        await interaction.showModal(modal);
+        
+    } catch (error) {
+        console.error('Error showing wallets modal:', error);
+        await interaction.reply({
+            content: `❌ Error: ${error.message}`,
+            ephemeral: true
+        });
+    }
+}
+
+/**
+ * Handle wallets modal submission
+ */
+export async function handleWalletsSubmit(interaction) {
+    try {
+        const numberOfWallets = parseInt(interaction.fields.getTextInputValue('number_of_wallets'));
+        const userId = interaction.user.id;
+        
+        if (isNaN(numberOfWallets) || numberOfWallets < 1 || numberOfWallets > 100) {
+            await interaction.reply({
+                content: '❌ Please enter a valid number of wallets between 1 and 100',
+                ephemeral: true
+            });
+            return;
+        }
+        
+        // Update the config
+        state.marketMakerConfig[userId].numberOfWallets = numberOfWallets;
+        
+        await interaction.deferUpdate();
+        
+        // Show updated settings
+        const { showMarketMakingSettings } = await import('../ui/settingsMenu.mjs');
+        await showMarketMakingSettings(interaction);
+        
+        await interaction.followUp({
+            content: `✅ Number of trading wallets set to ${numberOfWallets}`,
+            ephemeral: true
+        });
+        
+    } catch (error) {
+        console.error('Error handling wallets submission:', error);
+        await interaction.reply({
+            content: `❌ Error: ${error.message}`,
+            ephemeral: true
+        });
+    }
+}
+
+/**
+ * Show min trades per wallet modal
+ */
+export async function showMinTradesModal(interaction) {
+    try {
+        const userId = interaction.user.id;
+        const config = state.marketMakerConfig[userId] || {};
+        
+        const modal = new ModalBuilder()
+            .setCustomId('mm_min_trades_modal')
+            .setTitle('Set Minimum Trades Per Wallet');
+
+        const minTradesInput = new TextInputBuilder()
+            .setCustomId('min_trades')
+            .setLabel('Minimum Trades')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('1')
+            .setValue(config.minTrades ? config.minTrades.toString() : '1')
+            .setRequired(true);
+
+        modal.addComponents(new ActionRowBuilder().addComponents(minTradesInput));
+        await interaction.showModal(modal);
+        
+    } catch (error) {
+        console.error('Error showing min trades modal:', error);
+        await interaction.reply({
+            content: `❌ Error: ${error.message}`,
+            ephemeral: true
+        });
+    }
+}
+
+/**
+ * Handle min trades modal submission
+ */
+export async function handleMinTradesSubmit(interaction) {
+    try {
+        const minTrades = parseInt(interaction.fields.getTextInputValue('min_trades'));
+        const userId = interaction.user.id;
+        
+        if (isNaN(minTrades) || minTrades < 1 || minTrades > 100) {
+            await interaction.reply({
+                content: '❌ Please enter a valid number of minimum trades between 1 and 100',
+                ephemeral: true
+            });
+            return;
+        }
+        
+        // Update the config
+        state.marketMakerConfig[userId].minTrades = minTrades;
+        
+        await interaction.deferUpdate();
+        
+        // Show updated settings
+        const { showMarketMakingSettings } = await import('../ui/settingsMenu.mjs');
+        await showMarketMakingSettings(interaction);
+        
+        await interaction.followUp({
+            content: `✅ Minimum trades per wallet set to ${minTrades}`,
+            ephemeral: true
+        });
+        
+    } catch (error) {
+        console.error('Error handling min trades submission:', error);
+        await interaction.reply({
+            content: `❌ Error: ${error.message}`,
+            ephemeral: true
+        });
+    }
+}
+
+/**
+ * Show max trades per wallet modal
+ */
+export async function showMaxTradesModal(interaction) {
+    try {
+        const userId = interaction.user.id;
+        const config = state.marketMakerConfig[userId] || {};
+        
+        const modal = new ModalBuilder()
+            .setCustomId('mm_max_trades_modal')
+            .setTitle('Set Maximum Trades Per Wallet');
+
+        const maxTradesInput = new TextInputBuilder()
+            .setCustomId('max_trades')
+            .setLabel('Maximum Trades')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('10')
+            .setValue(config.maxTrades ? config.maxTrades.toString() : '10')
+            .setRequired(true);
+
+        modal.addComponents(new ActionRowBuilder().addComponents(maxTradesInput));
+        await interaction.showModal(modal);
+        
+    } catch (error) {
+        console.error('Error showing max trades modal:', error);
+        await interaction.reply({
+            content: `❌ Error: ${error.message}`,
+            ephemeral: true
+        });
+    }
+}
+
+/**
+ * Handle max trades modal submission
+ */
+export async function handleMaxTradesSubmit(interaction) {
+    try {
+        const maxTrades = parseInt(interaction.fields.getTextInputValue('max_trades'));
+        const userId = interaction.user.id;
+        
+        if (isNaN(maxTrades) || maxTrades < 1 || maxTrades > 1000) {
+            await interaction.reply({
+                content: '❌ Please enter a valid number of maximum trades between 1 and 1000',
+                ephemeral: true
+            });
+            return;
+        }
+        
+        // Update the config
+        state.marketMakerConfig[userId].maxTrades = maxTrades;
+        
+        await interaction.deferUpdate();
+        
+        // Show updated settings
+        const { showMarketMakingSettings } = await import('../ui/settingsMenu.mjs');
+        await showMarketMakingSettings(interaction);
+        
+        await interaction.followUp({
+            content: `✅ Maximum trades per wallet set to ${maxTrades}`,
+            ephemeral: true
+        });
+        
+    } catch (error) {
+        console.error('Error handling max trades submission:', error);
+        await interaction.reply({
+            content: `❌ Error: ${error.message}`,
+            ephemeral: true
+        });
     }
 }

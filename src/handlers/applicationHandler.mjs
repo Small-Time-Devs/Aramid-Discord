@@ -78,6 +78,9 @@ import {
 // Import dashboard separately to avoid duplicate declaration
 import { showMarketMakerDashboard } from '../../applications/chains/solana/marketMaking/ui/dashboard.mjs';
 
+// Add this import at the top of the file
+import { handleMarketMakingInteractions } from '../../applications/chains/solana/marketMaking/handlers.mjs';
+
 /**
  * Handle application interactions
  */
@@ -104,6 +107,23 @@ export async function handleApplicationInteractions(interaction) {
                 fieldValues[key] = value.value;
             });
             console.log(`[DEBUG] Modal values: ${JSON.stringify(fieldValues)}`);
+        }
+
+        // Try to handle with market making handler first
+        if ((interaction.isButton() || interaction.isModalSubmit()) && 
+            (interaction.customId.startsWith('mm_') || 
+             interaction.customId === 'select_mm_token' || 
+             interaction.customId === 'back_to_mm_dashboard' ||
+             interaction.customId === 'start_market_making' ||
+             interaction.customId === 'stop_market_making' ||
+             interaction.customId === 'view_mm_stats' ||
+             interaction.customId === 'set_mm_spread' ||
+             interaction.customId === 'set_mm_range' ||
+             interaction.customId === 'toggle_auto_adjust' ||
+             interaction.customId === 'save_mm_config')) {
+            
+            const handled = await handleMarketMakingInteractions(interaction);
+            if (handled) return;
         }
         
         // IMPORTANT: Handle modals first, before any other processing

@@ -657,21 +657,40 @@ export async function getMarketMakingConfig(userId) {
         if (settings) {
             // Extract market making specific settings if they exist
             const marketMakingConfig = {
-                tokenMint: settings.mm_tokenMint,
+                outputMint: settings.mm_outputMint,
+                slippage: settings.mm_slippage || 0.5,
+                useGeneratedWallets: settings.mm_useGeneratedWallets || 'True',
+                walletGenerationType: settings.mm_walletGenerationType || 'Range',
+                numberOfWallets: settings.mm_numberOfWallets || 5,
+                minTrades: settings.mm_minTrades || 1,
+                maxTrades: settings.mm_maxTrades || 10,
+                leaveDust: settings.mm_leaveDust || 'No',
+                dustAmountType: settings.mm_dustAmountType || 'Static',
+                staticDustAmount: settings.mm_staticDustAmount || 0,
+                minSolBalance: settings.mm_minSolBalance || 0.05,
+                sellPercentageType: settings.mm_sellPercentageType || 'Static',
+                staticSellPercentage: settings.mm_staticSellPercentage || 100,
+                rangeMinSellPercentage: settings.mm_rangeMinSellPercentage || 50,
+                rangeMaxSellPercentage: settings.mm_rangeMaxSellPercentage || 100,
+                retryAmount: settings.mm_retryAmount || 5,
+                tradeInvestmentType: settings.mm_tradeInvestmentType || 'Range',
+                staticPurchaseAmount: settings.mm_staticPurchaseAmount || 0.1,
+                rangeMinPurchaseAmount: settings.mm_rangeMinPurchaseAmount || 0.1,
+                rangeMaxPurchaseAmount: settings.mm_rangeMaxPurchaseAmount || 0.5,
+                platform: settings.mm_platform || 'Raydium',
+                isRunning: settings.mm_isRunning || false,
+                tokenMint: settings.mm_outputMint, // Duplicate for compatibility with existing code
                 tokenSymbol: settings.mm_tokenSymbol,
                 tokenName: settings.mm_tokenName,
-                spreadPercentage: settings.mm_spreadPercentage,
-                priceRange: settings.mm_priceRange,
-                autoAdjust: settings.mm_autoAdjust,
-                active: settings.mm_active,
+                finalWalletAddress: settings.mm_finalWalletAddress || null,
+                autoAdjust: settings.mm_autoAdjust !== undefined ? settings.mm_autoAdjust : true,
+                active: settings.mm_active || false,
                 startedAt: settings.mm_startedAt,
                 stoppedAt: settings.mm_stoppedAt,
-                minOrderSize: settings.mm_minOrderSize,
-                maxRisk: settings.mm_maxRisk
             };
             
             // Check if any market making config exists
-            if (marketMakingConfig.tokenMint) {
+            if (marketMakingConfig.outputMint || marketMakingConfig.tokenMint) {
                 console.log(`Found market making config for user ${userIdString}`);
                 return marketMakingConfig;
             }
@@ -686,54 +705,292 @@ export async function getMarketMakingConfig(userId) {
 }
 
 /**
- * Get user settings from DynamoDB
+ * Get previous tokens used for market making by this user
  * @param {string} userId - Discord user ID
- * @returns {Promise<Object|null>} User settings or null if not found
+ * @returns {Promise<Array>} - Array of token objects
  */
-export async function getUserSettings(userId) {
+export async function getPreviousMMTokens(userId) {
     try {
-        const params = {
-            TableName: process.env.DYNAMODB_SETTINGS_TABLE,
-            Key: {
-                userId: userId
-            }
-        };
+        // Always ensure userId is a string
+        const userIdString = String(userId);
+        console.log(`Fetching previous MM tokens for user: ${userIdString}`);
         
-        const result = await dynamoClient.get(params).promise();
-        return result.Item || null;
+        // First check if the AramidDiscord-mmSettings table exists
+        let tableExists = false;
+        try {
+            // Try to scan with limit 1 to check if table exists
+            await docClient.send(new ScanCommand({
+                TableName: 'AramidDiscord-mmSettings',
+                Limit: 1
+            }));
+            tableExists = true;
+        } catch (tableError) {
+            console.log('mmSettings table does not exist or is not accessible, falling back to Settings table');
+        }
+        
+        // If dedicated table exists, use it
+        if (tableExists) {
+            const result = await docClient.send(new QueryCommand({
+                TableName: 'AramidDiscord-mmSettings',
+                KeyConditionExpression: 'userID = :userId',
+                ExpressionAttributeValues: {
+                    ':userId': userIdString
+                }
+            }));
+            
+            if (result.Items && result.Items.length > 0) {
+                // Extract unique tokens
+                const tokenMap = {};
+                
+                result.Items.forEach(item => {
+                    const tokenMint = item.tokenMint || item.outputMint;
+                    if (tokenMint && !tokenMap[tokenMint]) {
+                        tokenMap[tokenMint] = {
+                            tokenMint: tokenMint,
+                            symbol: item.tokenSymbol || null,
+                            name: item.tokenName || null,
+                            lastUsed: item.updatedAt || null
+                        };
+                    }
+                });
+                
+                // Convert to array and sort by last used (most recent first)
+                const tokens = Object.values(tokenMap).sort((a, b) => {
+                    if (!a.lastUsed) return 1;
+                    if (!b.lastUsed) return -1;
+                    return new Date(b.lastUsed) - new Date(a.lastUsed);
+                });
+                
+                console.log(`Found ${tokens.length} previous MM tokens for user ${userIdString}`);
+                return tokens;
+            }
+        }
+        
+        // Fall back to the Settings table and look for mm_ prefixed settings
+        const settings = await getTradeSettings(userIdString);
+        if (settings && settings.mm_outputMint) {
+            // Create a token object from the settings
+            return [{
+                tokenMint: settings.mm_outputMint,
+                symbol: settings.mm_tokenSymbol || null,
+                name: settings.mm_tokenName || null,
+                lastUsed: settings.updatedAt || null
+            }];
+        }
+        
+        console.log(`No previous MM tokens found for user ${userIdString}`);
+        return [];
     } catch (error) {
-        console.error('Error getting user settings:', error);
+        console.error(`Error fetching previous MM tokens for user ${userId}:`, error);
+        return [];
+    }
+}
+
+/**
+ * Get market making settings for a specific token
+ * @param {string} userId - Discord user ID
+ * @param {string} tokenMint - Token mint address
+ * @returns {Promise<Object|null>} - Token settings or null if not found
+ */
+export async function getMMSettings(userId, tokenMint) {
+    try {
+        const userIdString = String(userId);
+        console.log(`Fetching MM settings for user ${userIdString} and token ${tokenMint}`);
+        
+        // First try dedicated mmSettings table if it exists
+        let tableExists = false;
+        let tokenSettings = null;
+        
+        try {
+            // Check if the table exists
+            await docClient.send(new ScanCommand({
+                TableName: 'AramidDiscord-mmSettings',
+                Limit: 1
+            }));
+            tableExists = true;
+        } catch (tableError) {
+            console.log('mmSettings table does not exist or is not accessible, falling back to Settings table');
+        }
+        
+        // If table exists, get the specific token settings
+        if (tableExists) {
+            try {
+                const result = await docClient.send(new QueryCommand({
+                    TableName: 'AramidDiscord-mmSettings',
+                    KeyConditionExpression: 'userID = :userId AND tokenMint = :tokenMint',
+                    ExpressionAttributeValues: {
+                        ':userId': userIdString,
+                        ':tokenMint': tokenMint
+                    }
+                }));
+                
+                if (result.Items && result.Items.length > 0) {
+                    tokenSettings = result.Items[0];
+                    console.log(`Found MM settings for token ${tokenMint} in mmSettings table`);
+                }
+            } catch (error) {
+                console.error('Error querying mmSettings table:', error);
+            }
+        }
+        
+        // If we didn't find settings in the dedicated table, check the main settings table
+        if (!tokenSettings) {
+            const settings = await getTradeSettings(userIdString);
+            
+            if (settings && (settings.mm_outputMint === tokenMint || settings.mm_tokenMint === tokenMint)) {
+                // Convert mm_ prefixed settings to regular keys
+                tokenSettings = {};
+                Object.entries(settings).forEach(([key, value]) => {
+                    if (key.startsWith('mm_')) {
+                        tokenSettings[key.substring(3)] = value;
+                    }
+                });
+                console.log(`Found MM settings for token ${tokenMint} in main settings table`);
+            }
+        }
+        
+        if (!tokenSettings) {
+            console.log(`No MM settings found for token ${tokenMint}`);
+            return null;
+        }
+        
+        // Return normalized settings
+        return {
+            outputMint: tokenSettings.outputMint || tokenSettings.tokenMint,
+            slippage: tokenSettings.slippage || 0.5,
+            useGeneratedWallets: tokenSettings.useGeneratedWallets || 'True',
+            walletGenerationType: tokenSettings.walletGenerationType || 'Range',
+            numberOfWallets: tokenSettings.numberOfWallets || 5,
+            minTrades: tokenSettings.minTrades || 1,
+            maxTrades: tokenSettings.maxTrades || 10,
+            leaveDust: tokenSettings.leaveDust || 'No',
+            dustAmountType: tokenSettings.dustAmountType || 'Static',
+            staticDustAmount: tokenSettings.staticDustAmount || 0,
+            minSolBalance: tokenSettings.minSolBalance || 0.05,
+            sellPercentageType: tokenSettings.sellPercentageType || 'Static',
+            staticSellPercentage: tokenSettings.staticSellPercentage || 100,
+            rangeMinSellPercentage: tokenSettings.rangeMinSellPercentage || 50,
+            rangeMaxSellPercentage: tokenSettings.rangeMaxSellPercentage || 100,
+            retryAmount: tokenSettings.retryAmount || 5,
+            tradeInvestmentType: tokenSettings.tradeInvestmentType || 'Range',
+            staticPurchaseAmount: tokenSettings.staticPurchaseAmount || 0.1,
+            rangeMinPurchaseAmount: tokenSettings.rangeMinPurchaseAmount || 0.1,
+            rangeMaxPurchaseAmount: tokenSettings.rangeMaxPurchaseAmount || 0.5,
+            platform: tokenSettings.platform || 'Raydium',
+            tokenSymbol: tokenSettings.tokenSymbol,
+            tokenName: tokenSettings.tokenName,
+            finalWalletAddress: tokenSettings.finalWalletAddress,
+            isRunning: tokenSettings.isRunning || false
+        };
+    } catch (error) {
+        console.error(`Error fetching MM settings for token ${tokenMint}:`, error);
         return null;
     }
 }
 
 /**
- * Update user settings in DynamoDB
+ * Save market making settings for a specific token
  * @param {string} userId - Discord user ID
- * @param {Object} settings - Settings to update
- * @returns {Promise<boolean>} Success status
+ * @param {string} tokenMint - Token mint address
+ * @param {Object} settings - Market making settings
+ * @returns {Promise<boolean>} - Success status
  */
-export async function updateUserSettings(userId, settings) {
+export async function saveMMSettings(userId, tokenMint, settings) {
     try {
-        // First get existing settings to merge with new ones
-        const existingSettings = await getUserSettings(userId) || {};
+        const userIdString = String(userId);
+        console.log(`Saving MM settings for user ${userIdString} and token ${tokenMint}`);
         
-        // Merge existing settings with new ones
-        const updatedSettings = { ...existingSettings, ...settings };
+        // Check if the dedicated mmSettings table exists
+        let tableExists = false;
+        try {
+            await docClient.send(new ScanCommand({
+                TableName: 'AramidDiscord-mmSettings',
+                Limit: 1
+            }));
+            tableExists = true;
+        } catch (tableError) {
+            console.log('mmSettings table does not exist, falling back to Settings table');
+        }
         
-        const params = {
-            TableName: process.env.DYNAMODB_SETTINGS_TABLE,
-            Item: {
-                userId: userId,
-                ...updatedSettings,
+        // If the table exists, save to it
+        if (tableExists) {
+            const item = {
+                userID: userIdString,
+                tokenMint: tokenMint,
+                ...settings,
                 updatedAt: new Date().toISOString()
-            }
-        };
+            };
+            
+            await docClient.send(new PutCommand({
+                TableName: 'AramidDiscord-mmSettings',
+                Item: item
+            }));
+            
+            console.log(`Saved settings to mmSettings table for token ${tokenMint}`);
+        }
         
-        await dynamoClient.put(params).promise();
+        // Always save to the main settings table with mm_ prefix
+        const prefixedSettings = {};
+        Object.entries(settings).forEach(([key, value]) => {
+            prefixedSettings[`mm_${key}`] = value;
+        });
+        
+        // Add the token mint with both potential keys for backward compatibility
+        prefixedSettings.mm_tokenMint = tokenMint;
+        prefixedSettings.mm_outputMint = tokenMint;
+        
+        await saveTradeSettings(userIdString, prefixedSettings);
+        
+        console.log(`Saved MM settings for token ${tokenMint} in main settings table`);
         return true;
     } catch (error) {
-        console.error('Error updating user settings:', error);
-        return false;
+        console.error(`Error saving MM settings for token ${tokenMint}:`, error);
+        throw error;
+    }
+}
+
+/**
+ * Get user's market making transactions
+ * @param {string} userId - Discord user ID
+ * @returns {Promise<Array>} - Array of transaction objects
+ */
+export async function getMMTransactions(userId) {
+    try {
+        const userIdString = String(userId);
+        console.log(`Fetching MM transactions for user: ${userIdString}`);
+        
+        // Check if the table exists
+        let tableExists = false;
+        try {
+            await docClient.send(new ScanCommand({
+                TableName: 'AramidDiscord-mmTransactions',
+                Limit: 1
+            }));
+            tableExists = true;
+        } catch (tableError) {
+            console.log('mmTransactions table does not exist');
+            return [];
+        }
+        
+        if (tableExists) {
+            const result = await docClient.send(new QueryCommand({
+                TableName: 'AramidDiscord-mmTransactions',
+                KeyConditionExpression: 'userID = :userId',
+                ExpressionAttributeValues: {
+                    ':userId': userIdString
+                }
+            }));
+            
+            if (result.Items && result.Items.length > 0) {
+                console.log(`Found ${result.Items.length} MM transactions for user ${userIdString}`);
+                return result.Items;
+            }
+        }
+        
+        console.log(`No MM transactions found for user ${userIdString}`);
+        return [];
+    } catch (error) {
+        console.error(`Error fetching MM transactions for user ${userId}:`, error);
+        return [];
     }
 }

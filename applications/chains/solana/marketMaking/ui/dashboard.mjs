@@ -15,6 +15,7 @@ import {
     fetchTokenBalances 
 } from '../../spotTrading/functions/utils.mjs';
 import { isFeatureAvailable, devFeatureMessage } from '../../../../../src/globals/global.mjs';
+import { initializeMarketMakingConfig } from '../config/settings.mjs';
 
 /**
  * Display Solana market maker main dashboard
@@ -74,8 +75,14 @@ export async function showMarketMakerDashboard(interaction, isFollowUp = false) 
         const solBalance = await fetchSolBalance(solPublicKey);
         const tokenBalances = await fetchTokenBalances(solPublicKey);
 
-        // Get market maker config if it exists
-        const marketMakerConfig = await getMarketMakingConfig(userId) || {};
+        // Get market maker config if it exists or initialize new one
+        let marketMakerConfig = await getMarketMakingConfig(userId);
+        if (!marketMakerConfig) {
+            marketMakerConfig = initializeMarketMakingConfig(userId, solPublicKey);
+        } else {
+            // Store in state for use by other components
+            state.marketMakerConfig[userId] = marketMakerConfig;
+        }
 
         // Create main market maker dashboard embed
         const embed = new EmbedBuilder()
@@ -97,19 +104,16 @@ export async function showMarketMakerDashboard(interaction, isFollowUp = false) 
             );
 
         // Add configuration status if it exists
-        if (marketMakerConfig.tokenMint) {
-            const tokenSymbol = marketMakerConfig.tokenSymbol || 'Unknown';
-            const spread = marketMakerConfig.spreadPercentage || 0;
-            const range = marketMakerConfig.priceRange || 0;
-            
+        if (marketMakerConfig.outputMint) {
             embed.addFields(
                 {
-                    name: '📊 Configuration',
+                    name: '📊 Market Making Configuration',
                     value: [
-                        `**Token:** ${tokenSymbol} (${marketMakerConfig.tokenMint.substring(0, 8)}...)`,
-                        `**Spread:** ${spread}%`,
-                        `**Price Range:** ${range}%`,
-                        `**Status:** ${marketMakerConfig.active ? '✅ Active' : '❌ Inactive'}`
+                        `**Token:** ${marketMakerConfig.outputMint.substring(0, 8)}...`,
+                        `**Slippage:** ${marketMakerConfig.slippage}%`,
+                        `**Wallets:** ${marketMakerConfig.numberOfWallets}`,
+                        `**Trades per Wallet:** ${marketMakerConfig.minTrades}-${marketMakerConfig.maxTrades}`,
+                        `**Status:** ${marketMakerConfig.isRunning ? '✅ Running' : '❌ Stopped'}`
                     ].join('\n'),
                     inline: false
                 }
@@ -134,7 +138,7 @@ export async function showMarketMakerDashboard(interaction, isFollowUp = false) 
         const row2 = new ActionRowBuilder();
         
         // Add start/stop button based on current status
-        if (marketMakerConfig.active) {
+        if (marketMakerConfig.isRunning) {
             row2.addComponents(
                 new ButtonBuilder()
                     .setCustomId('stop_market_making')
