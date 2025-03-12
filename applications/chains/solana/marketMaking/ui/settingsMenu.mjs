@@ -269,6 +269,7 @@ export async function showMarketMakingSettingsForToken(interaction, tokenDetails
         const tokenName = tokenDetails?.name || 'Unknown Token';
         const tokenSymbol = tokenDetails?.symbol || '';
         const displayName = tokenSymbol ? `${tokenName} (${tokenSymbol})` : tokenName;
+        const tokenMint = config.outputMint || config.tokenMint || config.inputMint;
         
         // Create settings embed
         const embed = new EmbedBuilder()
@@ -282,7 +283,7 @@ export async function showMarketMakingSettingsForToken(interaction, tokenDetails
                 name: 'Token Details',
                 value: [
                     `• Name: ${displayName}`,
-                    `• Address: ${config.outputMint.substring(0, 8)}...${config.outputMint.substring(config.outputMint.length - 4)}`,
+                    `• Address: ${tokenMint ? `${tokenMint.substring(0, 8)}...${tokenMint.substring(tokenMint.length - 4)}` : 'Not set'}`,
                     tokenBalance !== null ? `• Your Balance: ${tokenBalance}` : '• Balance: Unknown',
                 ].join('\n'),
                 inline: false
@@ -290,46 +291,36 @@ export async function showMarketMakingSettingsForToken(interaction, tokenDetails
         );
         
         // Add current settings if they exist
-        if (config.slippage !== undefined) {
-            embed.addFields(
-                {
-                    name: 'Current Configuration',
-                    value: [
-                        `• Slippage: ${config.slippage}%`,
-                        `• Number of Wallets: ${config.numberOfWallets || 5}`,
-                        `• Trades per Wallet: ${config.minTrades || 1}-${config.maxTrades || 10}`,
-                        `• Leave Dust: ${config.leaveDust || 'No'}`,
-                        `• Min SOL Balance: ${config.minSolBalance || 0.05} SOL`,
-                        `• Sell Type: ${config.sellPercentageType || 'Static'}`,
-                        `• Buy Type: ${config.tradeInvestmentType || 'Range'}`
-                    ].join('\n'),
-                    inline: false
-                }
-            );
-        }
+        embed.addFields(
+            {
+                name: 'Market Making Configuration',
+                value: [
+                    `• Min Wallet Balance: ${config.minWalletBalance || config.minSolBalance || '0.05'} SOL`,
+                    `• Trade Amount Range: ${config.minTradeSolanaAmount || config.rangeMinPurchaseAmount || '0.1'} - ${config.maxTradeSolanaAmount || config.rangeMaxPurchaseAmount || '0.5'} SOL`,
+                    `• Trades per Wallet: ${config.minTradesPerWallet || config.minTrades || '1'} - ${config.maxTradesPerWallet || config.maxTrades || '10'}`,
+                    `• Status: ${config.isRunning ? '✅ Running' : '❌ Stopped'}`
+                ].join('\n'),
+                inline: false
+            }
+        );
         
         // Create button rows for actions
         const row1 = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
                     .setCustomId('mm_set_all_settings')
-                    .setLabel('Set MM Settings')
+                    .setLabel('Update Settings')
                     .setStyle(ButtonStyle.Primary)
                     .setEmoji('⚙️'),
-                new ButtonBuilder()
-                    .setCustomId('mm_view_detailed_settings')
-                    .setLabel('View Detailed Settings')
-                    .setStyle(ButtonStyle.Secondary)
-                    .setEmoji('📋')
-            );
-            
-        const row2 = new ActionRowBuilder()
-            .addComponents(
                 new ButtonBuilder()
                     .setCustomId('mm_save_settings')
                     .setLabel('Save Settings')
                     .setStyle(ButtonStyle.Success)
-                    .setEmoji('💾'),
+                    .setEmoji('💾')
+            );
+            
+        const row2 = new ActionRowBuilder()
+            .addComponents(
                 new ButtonBuilder()
                     .setCustomId('select_mm_token')
                     .setLabel('Change Token')
@@ -370,58 +361,59 @@ export async function showAllSettingsModal(interaction) {
             .setCustomId('mm_all_settings_modal')
             .setTitle('Market Making Settings');
 
-        // Slippage input
-        const slippageInput = new TextInputBuilder()
-            .setCustomId('mm_slippage')
-            .setLabel('Slippage % (0.1-10)')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('0.5')
-            .setValue(config.slippage?.toString() || '0.5')
-            .setRequired(true);
-            
-        // Number of wallets input
-        const walletsInput = new TextInputBuilder()
-            .setCustomId('mm_num_wallets')
-            .setLabel('Number of Wallets (1-100)')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('5')
-            .setValue(config.numberOfWallets?.toString() || '5')
-            .setRequired(true);
-            
-        // Min/Max trades input
-        const tradesInput = new TextInputBuilder()
-            .setCustomId('mm_trades')
-            .setLabel('Min-Max Trades per Wallet (format: 1-10)')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('1-10')
-            .setValue(`${config.minTrades || '1'}-${config.maxTrades || '10'}`)
-            .setRequired(true);
-            
-        // Min SOL balance input
+        // Minimum wallet balance input
         const minBalanceInput = new TextInputBuilder()
             .setCustomId('mm_min_balance')
-            .setLabel('Min SOL Balance (0.01-1)')
+            .setLabel('Min SOL Balance (keep in wallet)')
             .setStyle(TextInputStyle.Short)
             .setPlaceholder('0.05')
-            .setValue(config.minSolBalance?.toString() || '0.05')
+            .setValue(config.minWalletBalance?.toString() || '0.05')
             .setRequired(true);
             
-        // Buy/Sell Type input
-        const typeInput = new TextInputBuilder()
-            .setCustomId('mm_types')
-            .setLabel('Sell/Buy Type (format: Static/Range)')
+        // Min trade amount
+        const minTradeInput = new TextInputBuilder()
+            .setCustomId('mm_min_trade_amount')
+            .setLabel('Min Trade Amount (SOL)')
             .setStyle(TextInputStyle.Short)
-            .setPlaceholder('Static/Range')
-            .setValue(`${config.sellPercentageType || 'Static'}/${config.tradeInvestmentType || 'Range'}`)
+            .setPlaceholder('0.1')
+            .setValue(config.minTradeSolanaAmount?.toString() || '0.1')
+            .setRequired(true);
+            
+        // Max trade amount
+        const maxTradeInput = new TextInputBuilder()
+            .setCustomId('mm_max_trade_amount')
+            .setLabel('Max Trade Amount (SOL)')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('0.5')
+            .setValue(config.maxTradeSolanaAmount?.toString() || '0.5')
+            .setRequired(true);
+
+        // Min trades per wallet
+        const minTradesInput = new TextInputBuilder()
+            .setCustomId('mm_min_trades_wallet')
+            .setLabel('Min Trades per Wallet')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('1')
+            .setValue(config.minTradesPerWallet?.toString() || '1')
+            .setRequired(true);
+            
+        // Max trades per wallet
+        const maxTradesInput = new TextInputBuilder()
+            .setCustomId('mm_max_trades_wallet')
+            .setLabel('Max Trades per Wallet')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('10')
+            .setValue(config.maxTradesPerWallet?.toString() || '10')
             .setRequired(true);
 
         // Add all inputs to the modal
+        // Note: Discord modals are limited to 5 inputs max
         modal.addComponents(
-            new ActionRowBuilder().addComponents(slippageInput),
-            new ActionRowBuilder().addComponents(walletsInput),
-            new ActionRowBuilder().addComponents(tradesInput),
             new ActionRowBuilder().addComponents(minBalanceInput),
-            new ActionRowBuilder().addComponents(typeInput)
+            new ActionRowBuilder().addComponents(minTradeInput),
+            new ActionRowBuilder().addComponents(maxTradeInput),
+            new ActionRowBuilder().addComponents(minTradesInput),
+            new ActionRowBuilder().addComponents(maxTradesInput)
         );
 
         // Show the modal
@@ -445,55 +437,46 @@ export async function handleAllSettingsSubmit(interaction) {
         await interaction.deferReply({ ephemeral: true });
         
         // Get all values from the form
-        const slippage = parseFloat(interaction.fields.getTextInputValue('mm_slippage'));
-        const numWallets = parseInt(interaction.fields.getTextInputValue('mm_num_wallets'));
-        const tradesRange = interaction.fields.getTextInputValue('mm_trades');
         const minBalance = parseFloat(interaction.fields.getTextInputValue('mm_min_balance'));
-        const types = interaction.fields.getTextInputValue('mm_types');
-        
-        // Parse the min/max trades
-        let minTrades = 1;
-        let maxTrades = 10;
-        if (tradesRange.includes('-')) {
-            const [min, max] = tradesRange.split('-').map(val => parseInt(val.trim()));
-            minTrades = min || 1;
-            maxTrades = max || 10;
-        }
-        
-        // Parse sell/buy types
-        let sellPercentageType = 'Static';
-        let tradeInvestmentType = 'Range';
-        if (types.includes('/')) {
-            const [sell, buy] = types.split('/').map(val => val.trim());
-            sellPercentageType = ['Static', 'Range'].includes(sell) ? sell : 'Static';
-            tradeInvestmentType = ['Static', 'Range'].includes(buy) ? buy : 'Range';
-        }
+        const minTradeAmount = parseFloat(interaction.fields.getTextInputValue('mm_min_trade_amount'));
+        const maxTradeAmount = parseFloat(interaction.fields.getTextInputValue('mm_max_trade_amount'));
+        const minTrades = parseInt(interaction.fields.getTextInputValue('mm_min_trades_wallet'));
+        const maxTrades = parseInt(interaction.fields.getTextInputValue('mm_max_trades_wallet'));
         
         // Validate inputs
-        if (isNaN(slippage) || slippage < 0.1 || slippage > 10) {
-            await interaction.editReply({
-                content: '❌ Please enter a valid slippage between 0.1 and 10%'
-            });
-            return;
-        }
-        
-        if (isNaN(numWallets) || numWallets < 1 || numWallets > 100) {
-            await interaction.editReply({
-                content: '❌ Please enter a valid number of wallets between 1 and 100'
-            });
-            return;
-        }
-        
-        if (minTrades < 1 || maxTrades < minTrades) {
-            await interaction.editReply({
-                content: '❌ Invalid trade range. Min must be at least 1, and Max must be greater than or equal to Min.'
-            });
-            return;
-        }
-        
         if (isNaN(minBalance) || minBalance < 0.01 || minBalance > 1) {
             await interaction.editReply({
                 content: '❌ Please enter a valid minimum SOL balance between 0.01 and 1'
+            });
+            return;
+        }
+        
+        if (isNaN(minTradeAmount) || minTradeAmount <= 0) {
+            await interaction.editReply({
+                content: '❌ Minimum trade amount must be greater than 0'
+            });
+            return;
+        }
+        
+        if (isNaN(maxTradeAmount) || maxTradeAmount <= minTradeAmount) {
+            await interaction.editReply({
+                content: '❌ Maximum trade amount must be greater than minimum trade amount'
+            });
+            return;
+        }
+        
+        // Validate min trades
+        if (isNaN(minTrades) || minTrades < 1) {
+            await interaction.editReply({
+                content: '❌ Minimum trades per wallet must be at least 1'
+            });
+            return;
+        }
+        
+        // Validate max trades
+        if (isNaN(maxTrades) || maxTrades < minTrades || maxTrades > 1000) {
+            await interaction.editReply({
+                content: '❌ Maximum trades per wallet must be greater than minimum trades and less than 1000'
             });
             return;
         }
@@ -503,71 +486,667 @@ export async function handleAllSettingsSubmit(interaction) {
             state.marketMakerConfig[userId] = {};
         }
         
-        state.marketMakerConfig[userId].slippage = slippage;
-        state.marketMakerConfig[userId].numberOfWallets = numWallets;
+        // Update config with the new values
+        state.marketMakerConfig[userId].minWalletBalance = minBalance;
+        state.marketMakerConfig[userId].minTradeSolanaAmount = minTradeAmount;
+        state.marketMakerConfig[userId].maxTradeSolanaAmount = maxTradeAmount;
+        state.marketMakerConfig[userId].minTradesPerWallet = minTrades;
+        state.marketMakerConfig[userId].maxTradesPerWallet = maxTrades;
+        
+        // For backward compatibility
+        state.marketMakerConfig[userId].minSolBalance = minBalance;
+        state.marketMakerConfig[userId].rangeMinPurchaseAmount = minTradeAmount;
+        state.marketMakerConfig[userId].rangeMaxPurchaseAmount = maxTradeAmount;
         state.marketMakerConfig[userId].minTrades = minTrades;
         state.marketMakerConfig[userId].maxTrades = maxTrades;
-        state.marketMakerConfig[userId].minSolBalance = minBalance;
-        state.marketMakerConfig[userId].sellPercentageType = sellPercentageType;
-        state.marketMakerConfig[userId].tradeInvestmentType = tradeInvestmentType;
         
-        // Set default values for other settings
-        if (sellPercentageType === 'Static' && !state.marketMakerConfig[userId].staticSellPercentage) {
-            state.marketMakerConfig[userId].staticSellPercentage = 100;
-        }
-        if (sellPercentageType === 'Range') {
-            if (!state.marketMakerConfig[userId].rangeMinSellPercentage) {
-                state.marketMakerConfig[userId].rangeMinSellPercentage = 50;
-            }
-            if (!state.marketMakerConfig[userId].rangeMaxSellPercentage) {
-                state.marketMakerConfig[userId].rangeMaxSellPercentage = 100;
-            }
-        }
-        if (tradeInvestmentType === 'Static' && !state.marketMakerConfig[userId].staticPurchaseAmount) {
-            state.marketMakerConfig[userId].staticPurchaseAmount = 0.1;
-        }
-        if (tradeInvestmentType === 'Range') {
-            if (!state.marketMakerConfig[userId].rangeMinPurchaseAmount) {
-                state.marketMakerConfig[userId].rangeMinPurchaseAmount = 0.1;
-            }
-            if (!state.marketMakerConfig[userId].rangeMaxPurchaseAmount) {
-                state.marketMakerConfig[userId].rangeMaxPurchaseAmount = 0.5;
-            }
-        }
-        
-        // Get token details
-        const tokenMint = state.marketMakerConfig[userId].outputMint;
+        // Save to database
         try {
-            const { fetchTokenDetails, fetchTokenBalance } = await import('../../spotTrading/functions/utils.mjs');
-            const { checkUserWallet } = await import('../../../../../src/db/dynamo.mjs');
-            
-            const tokenDetails = await fetchTokenDetails(tokenMint);
-            const { solPublicKey } = await checkUserWallet(userId);
-            const tokenBalance = await fetchTokenBalance(solPublicKey, tokenMint);
-            
-            // Show updated settings
-            await showMarketMakingSettingsForToken(interaction, tokenDetails, tokenBalance);
-            
-            await interaction.followUp({
-                content: '✅ Market making settings updated successfully!',
-                ephemeral: true
-            });
-            
-        } catch (error) {
-            console.error('Error fetching token details after settings update:', error);
-            
-            // Show generic success message and return to settings menu
+            await saveMMSettingsToDatabase(userId, state.marketMakerConfig[userId]);
             await interaction.editReply({
-                content: '✅ Market making settings updated successfully!'
+                content: '✅ Market making settings saved successfully!'
             });
             
-            await showMarketMakingSettings(interaction);
+            // Show updated settings view
+            setTimeout(async () => {
+                await showMarketMakingSettingsForToken(interaction, 
+                    {
+                        name: state.marketMakerConfig[userId].tokenName,
+                        symbol: state.marketMakerConfig[userId].tokenSymbol
+                    }, 
+                    null);
+            }, 1000);
+            
+        } catch (saveError) {
+            console.error('Error saving settings to database:', saveError);
+            await interaction.editReply({
+                content: `❌ Settings were updated but could not be saved to the database: ${saveError.message}`
+            });
         }
         
     } catch (error) {
-        console.error('Error handling all settings submit:', error);
+        console.error('Error handling settings submission:', error);
         await interaction.editReply({
             content: `❌ Error saving settings: ${error.message}. Please try again.`
+        });
+    }
+}
+
+/**
+ * Save market making settings to the database
+ */
+async function saveMMSettingsToDatabase(userId, config) {
+    try {
+        const { saveMMSettings } = await import('../../../src/db/dynamo.mjs');
+        
+        // Ensure we have the required token address
+        if (!config.outputMint && !config.tokenMint && !config.inputMint) {
+            throw new Error('Token address is required');
+        }
+        
+        // Use whichever token address is available
+        const tokenMint = config.inputMint || config.outputMint || config.tokenMint;
+        
+        // Create a clean settings object with the expected fields
+        const settings = {
+            inputMint: tokenMint,
+            outputMint: tokenMint,
+            tokenMint: tokenMint,
+            minWalletBalance: config.minWalletBalance,
+            minTradeSolanaAmount: config.minTradeSolanaAmount,
+            maxTradeSolanaAmount: config.maxTradeSolanaAmount,
+            minTradesPerWallet: config.minTradesPerWallet,
+            maxTradesPerWallet: config.maxTradesPerWallet,
+            slippage: config.slippage || 0.5,
+            tokenName: config.tokenName,
+            tokenSymbol: config.tokenSymbol,
+            finalWalletAddress: config.finalWalletAddress
+        };
+        
+        // Save to database
+        await saveMMSettings(userId, tokenMint, settings);
+        return true;
+    } catch (error) {
+        console.error('Error saving MM settings to database:', error);
+        throw error;
+    }
+}
+
+/**
+ * Show static sell percentage modal
+ */
+async function showStaticSellModal(interaction) {
+    try {
+        const userId = interaction.user.id;
+        const config = state.marketMakerConfig[userId];
+        
+        const modal = new ModalBuilder()
+            .setCustomId('mm_static_sell_modal')
+            .setTitle('Static Sell Percentage');
+                 
+        const sellPercentInput = new TextInputBuilder()
+            .setCustomId('static_sell_percent')
+            .setLabel('Sell Percentage (1-100)')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('100')
+            .setValue(config.staticSellPercentage?.toString() || '100')
+            .setRequired(true);
+            
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(sellPercentInput)
+        );
+        
+        // Show a message that we're proceeding to the next step
+        await interaction.editReply({
+            content: 'Basic settings saved! Please set your sell percentage in the next dialog.'
+        });
+        
+        // Show the modal after a brief delay
+        setTimeout(async () => {
+            try {
+                await interaction.followUp({
+                    content: 'Please complete the sell percentage configuration:',
+                    ephemeral: true,
+                    components: [
+                        new ActionRowBuilder()
+                            .addComponents(
+                                new ButtonBuilder()
+                                    .setCustomId('show_static_sell_modal')
+                                    .setLabel('Set Sell Percentage')
+                                    .setStyle(ButtonStyle.Primary)
+                            )
+                    ]
+                });
+            } catch (err) {
+                console.error('Error showing follow-up button:', err);
+            }
+        }, 500);
+        
+    } catch (error) {
+        console.error('Error showing static sell modal:', error);
+        await interaction.followUp({
+            content: `❌ Error: ${error.message}`,
+            ephemeral: true
+        });
+    }
+}
+
+/**
+ * Show range sell percentage modal
+ */
+async function showRangeSellModal(interaction) {
+    try {
+        const userId = interaction.user.id;
+        const config = state.marketMakerConfig[userId];
+        
+        const modal = new ModalBuilder()
+            .setCustomId('mm_range_sell_modal')
+            .setTitle('Range Sell Percentage');
+                
+        const minSellInput = new TextInputBuilder()
+            .setCustomId('min_sell_percent')
+            .setLabel('Minimum Sell Percentage (1-100)')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('50')
+            .setValue(config.rangeMinSellPercentage?.toString() || '50')
+            .setRequired(true);
+            
+        const maxSellInput = new TextInputBuilder()
+            .setCustomId('max_sell_percent')
+            .setLabel('Maximum Sell Percentage (1-100)')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('100')
+            .setValue(config.rangeMaxSellPercentage?.toString() || '100')
+            .setRequired(true);
+                
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(minSellInput),
+            new ActionRowBuilder().addComponents(maxSellInput)
+        );
+        
+        // Show a message that we're proceeding to the next step
+        await interaction.editReply({
+            content: 'Basic settings saved! Please set your sell percentage range in the next dialog.'
+        });
+        
+        // Show the modal after a brief delay
+        setTimeout(async () => {
+            try {
+                await interaction.followUp({
+                    content: 'Please complete the sell percentage configuration:',
+                    ephemeral: true,
+                    components: [
+                        new ActionRowBuilder()
+                            .addComponents(
+                                new ButtonBuilder()
+                                    .setCustomId('show_range_sell_modal')
+                                    .setLabel('Set Sell Percentage Range')
+                                    .setStyle(ButtonStyle.Primary)
+                            )
+                    ]
+                });
+            } catch (err) {
+                console.error('Error showing follow-up button:', err);
+            }
+        }, 500);
+        
+    } catch (error) {
+        console.error('Error showing range sell modal:', error);
+        await interaction.followUp({
+            content: `❌ Error: ${error.message}`,
+            ephemeral: true
+        });
+    }
+}
+
+// Keep the rest of the existing functions, but modify handleStaticSellSubmit and handleRangeSellSubmit
+// to show the appropriate buy modals next
+
+/**
+ * Handle static sell percentage submission
+ */
+export async function handleStaticSellSubmit(interaction) {
+    try {
+        const userId = interaction.user.id;
+        await interaction.deferReply({ ephemeral: true });
+        
+        const sellPercent = parseInt(interaction.fields.getTextInputValue('static_sell_percent'));
+        
+        // Validate input
+        if (isNaN(sellPercent) || sellPercent < 1 || sellPercent > 100) {
+            await interaction.editReply({
+                content: '❌ Please enter a valid sell percentage between 1 and 100'
+            });
+            return;
+        }
+        
+        // Update config
+        if (!state.marketMakerConfig[userId]) {
+            state.marketMakerConfig[userId] = {};
+        }
+        
+        state.marketMakerConfig[userId].staticSellPercentage = sellPercent;
+        
+        // Show the appropriate buy modal based on the previously selected buy type
+        const buyType = state.marketMakerConfig[userId].tradeInvestmentType;
+        if (buyType === 'Static') {
+            await showStaticBuyModal(interaction);
+        } else {
+            await showRangeBuyModal(interaction);
+        }
+        
+    } catch (error) {
+        console.error('Error handling static sell percentage submission:', error);
+        await interaction.editReply({
+            content: `❌ Error saving settings: ${error.message}. Please try again.`
+        });
+    }
+}
+
+/**
+ * Handle range sell percentage submission
+ */
+export async function handleRangeSellSubmit(interaction) {
+    try {
+        const userId = interaction.user.id;
+        await interaction.deferReply({ ephemeral: true });
+               
+        const minSellPercent = parseInt(interaction.fields.getTextInputValue('min_sell_percent'));
+        const maxSellPercent = parseInt(interaction.fields.getTextInputValue('max_sell_percent'));
+        
+        // Validate inputs
+        if (isNaN(minSellPercent) || minSellPercent < 1 || minSellPercent > 100) {
+            await interaction.editReply({
+                content: '❌ Please enter a valid minimum sell percentage between 1 and 100'
+            });
+            return;
+        }
+        
+        if (isNaN(maxSellPercent) || maxSellPercent < minSellPercent || maxSellPercent > 100) {
+            await interaction.editReply({
+                content: '❌ Please enter a valid maximum sell percentage between your minimum and 100'
+            });
+            return;
+        }
+        
+        // Update config
+        if (!state.marketMakerConfig[userId]) {
+            state.marketMakerConfig[userId] = {};
+        }
+        
+        state.marketMakerConfig[userId].rangeMinSellPercentage = minSellPercent;
+        state.marketMakerConfig[userId].rangeMaxSellPercentage = maxSellPercent;
+        
+        // Show the appropriate buy modal based on the previously selected buy type
+        const buyType = state.marketMakerConfig[userId].tradeInvestmentType;
+        if (buyType === 'Static') {
+            await showStaticBuyModal(interaction);
+        } else {
+            await showRangeBuyModal(interaction);
+        }
+        
+    } catch (error) {
+        console.error('Error handling range sell percentage submission:', error);
+        await interaction.editReply({
+            content: `❌ Error saving settings: ${error.message}. Please try again.`
+        });
+    }
+}
+
+/**
+ * Show static buy amount modal
+ */
+async function showStaticBuyModal(interaction) {
+    try {
+        const userId = interaction.user.id;
+        const config = state.marketMakerConfig[userId];
+        
+        const modal = new ModalBuilder()
+            .setCustomId('mm_static_buy_modal')
+            .setTitle('Static Purchase Amount');
+                 
+        const buyAmountInput = new TextInputBuilder()
+            .setCustomId('static_purchase_amount')
+            .setLabel('Purchase Amount (SOL)')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('0.1')
+            .setValue(config.staticPurchaseAmount?.toString() || '0.1')
+            .setRequired(true);
+            
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(buyAmountInput)
+        );
+        
+        // Show a message that we're proceeding to the next step
+        await interaction.editReply({
+            content: 'Sell settings saved! Please set your buy amount in the next dialog.'
+        });
+        
+        // Show the modal after a brief delay
+        setTimeout(async () => {
+            try {
+                await interaction.followUp({
+                    content: 'Please complete the buy amount configuration:',
+                    ephemeral: true,
+                    components: [
+                        new ActionRowBuilder()
+                            .addComponents(
+                                new ButtonBuilder()
+                                    .setCustomId('show_static_buy_modal')
+                                    .setLabel('Set Buy Amount')
+                                    .setStyle(ButtonStyle.Primary)
+                            )
+                    ]
+                });
+            } catch (err) {
+                console.error('Error showing follow-up button:', err);
+            }
+        }, 500);
+        
+    } catch (error) {
+        console.error('Error showing static buy modal:', error);
+        await interaction.followUp({
+            content: `❌ Error: ${error.message}`,
+            ephemeral: true
+        });
+    }
+}
+
+/**
+ * Show range buy amount modal
+ */
+async function showRangeBuyModal(interaction) {
+    try {
+        const userId = interaction.user.id;
+        const config = state.marketMakerConfig[userId];
+        
+        const modal = new ModalBuilder()
+            .setCustomId('mm_range_buy_modal')
+            .setTitle('Range Purchase Amount');
+                
+        const minBuyInput = new TextInputBuilder()
+            .setCustomId('min_purchase_amount')
+            .setLabel('Minimum Purchase Amount (SOL)')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('0.1')
+            .setValue(config.rangeMinPurchaseAmount?.toString() || '0.1')
+            .setRequired(true);
+            
+        const maxBuyInput = new TextInputBuilder()
+            .setCustomId('max_purchase_amount')
+            .setLabel('Maximum Purchase Amount (SOL)')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('0.5')
+            .setValue(config.rangeMaxPurchaseAmount?.toString() || '0.5')
+            .setRequired(true);
+                
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(minBuyInput),
+            new ActionRowBuilder().addComponents(maxBuyInput)
+        );
+        
+        // Show a message that we're proceeding to the next step
+        await interaction.editReply({
+            content: 'Sell settings saved! Please set your buy amount range in the next dialog.'
+        });
+        
+        // Show the modal after a brief delay
+        setTimeout(async () => {
+            try {
+                await interaction.followUp({
+                    content: 'Please complete the buy amount configuration:',
+                    ephemeral: true,
+                    components: [
+                        new ActionRowBuilder()
+                            .addComponents(
+                                new ButtonBuilder()
+                                    .setCustomId('show_range_buy_modal')
+                                    .setLabel('Set Buy Amount Range')
+                                    .setStyle(ButtonStyle.Primary)
+                            )
+                    ]
+                });
+            } catch (err) {
+                console.error('Error showing follow-up button:', err);
+            }
+        }, 500);
+        
+    } catch (error) {
+        console.error('Error showing range buy modal:', error);
+        await interaction.followUp({
+            content: `❌ Error: ${error.message}`,
+            ephemeral: true
+        });
+    }
+}
+
+/**
+ * Handle static buy amount submission
+ */
+export async function handleStaticBuySubmit(interaction) {
+    try {
+        const userId = interaction.user.id;
+        await interaction.deferReply({ ephemeral: true });
+        
+        const purchaseAmount = parseFloat(interaction.fields.getTextInputValue('static_purchase_amount'));
+        
+        // Validate input
+        if (isNaN(purchaseAmount) || purchaseAmount <= 0) {
+            await interaction.editReply({
+                content: '❌ Please enter a valid purchase amount greater than 0'
+            });
+            return;
+        }
+        
+        // Update config
+        if (!state.marketMakerConfig[userId]) {
+            state.marketMakerConfig[userId] = {};
+        }
+        
+        state.marketMakerConfig[userId].staticPurchaseAmount = purchaseAmount;
+        
+        // Complete settings and show final view
+        await finalizeSettings(interaction);
+        
+    } catch (error) {
+        console.error('Error handling static buy amount submission:', error);
+        await interaction.editReply({
+            content: `❌ Error saving settings: ${error.message}. Please try again.`
+        });
+    }
+}
+
+/**
+ * Handle range buy amount submission
+ */
+export async function handleRangeBuySubmit(interaction) {
+    try {
+        const userId = interaction.user.id;
+        await interaction.deferReply({ ephemeral: true });
+               
+        const minPurchaseAmount = parseFloat(interaction.fields.getTextInputValue('min_purchase_amount'));
+        const maxPurchaseAmount = parseFloat(interaction.fields.getTextInputValue('max_purchase_amount'));
+        
+        // Validate inputs
+        if (isNaN(minPurchaseAmount) || minPurchaseAmount <= 0) {
+            await interaction.editReply({
+                content: '❌ Please enter a valid minimum purchase amount greater than 0'
+            });
+            return;
+        }
+        
+        if (isNaN(maxPurchaseAmount) || maxPurchaseAmount <= minPurchaseAmount) {
+            await interaction.editReply({
+                content: '❌ Please enter a valid maximum purchase amount greater than your minimum amount'
+            });
+            return;
+        }
+        
+        // Update config
+        if (!state.marketMakerConfig[userId]) {
+            state.marketMakerConfig[userId] = {};
+        }
+        
+        state.marketMakerConfig[userId].rangeMinPurchaseAmount = minPurchaseAmount;
+        state.marketMakerConfig[userId].rangeMaxPurchaseAmount = maxPurchaseAmount;
+        
+        // Complete settings and show final view
+        await finalizeSettings(interaction);
+        
+    } catch (error) {
+        console.error('Error handling range buy amount submission:', error);
+        await interaction.editReply({
+            content: `❌ Error saving settings: ${error.message}. Please try again.`
+        });
+    }
+}
+
+/**
+ * Handle sell type selection (Static or Range)
+ */
+export async function handleSellTypeSelection(interaction) {
+    try {
+        const userId = interaction.user.id;
+        await interaction.deferUpdate();
+        
+        // Get the selected type
+        const isStatic = interaction.customId === 'mm_sell_type_static';
+        
+        // Update config
+        if (!state.marketMakerConfig[userId]) {
+            state.marketMakerConfig[userId] = {};
+        }
+        
+        state.marketMakerConfig[userId].sellPercentageType = isStatic ? 'Static' : 'Range';
+        
+        if (isStatic) {
+            // Show modal for Static percentage
+            const modal = new ModalBuilder()
+                .setCustomId('mm_static_sell_modal')
+                .setTitle('Static Sell Percentage');
+                
+            const sellPercentInput = new TextInputBuilder()
+                .setCustomId('static_sell_percent')
+                .setLabel('Sell Percentage (1-100)')
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder('100')
+                .setValue(state.marketMakerConfig[userId].staticSellPercentage?.toString() || '100')
+                .setRequired(true);
+                
+            modal.addComponents(
+                new ActionRowBuilder().addComponents(sellPercentInput)
+            );
+            
+            await interaction.showModal(modal);
+        } else {
+            // Show modal for Range percentages
+            const modal = new ModalBuilder()
+                .setCustomId('mm_range_sell_modal')
+                .setTitle('Range Sell Percentage');
+                
+            const minSellInput = new TextInputBuilder()
+                .setCustomId('min_sell_percent')
+                .setLabel('Minimum Sell Percentage (1-100)')
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder('50')
+                .setValue(state.marketMakerConfig[userId].rangeMinSellPercentage?.toString() || '50')
+                .setRequired(true);
+                
+            const maxSellInput = new TextInputBuilder()
+                .setCustomId('max_sell_percent')
+                .setLabel('Maximum Sell Percentage (1-100)')
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder('100')
+                .setValue(state.marketMakerConfig[userId].rangeMaxSellPercentage?.toString() || '100')
+                .setRequired(true);
+                
+            modal.addComponents(
+                new ActionRowBuilder().addComponents(minSellInput),
+                new ActionRowBuilder().addComponents(maxSellInput)
+            );
+            
+            await interaction.showModal(modal);
+        }
+    } catch (error) {
+        console.error('Error handling sell type selection:', error);
+        await interaction.followUp({
+            content: `❌ Error: ${error.message}. Please try again.`,
+            ephemeral: true  
+        });
+    }
+}
+
+/**
+ * Handle buy type selection (Static or Range)
+ */
+export async function handleBuyTypeSelection(interaction) {
+    try {
+        const userId = interaction.user.id;
+        await interaction.deferUpdate();
+        
+        // Get the selected type
+        const isStatic = interaction.customId === 'mm_buy_type_static';
+        
+        // Update config
+        if (!state.marketMakerConfig[userId]) {
+            state.marketMakerConfig[userId] = {};
+        }
+        
+        state.marketMakerConfig[userId].tradeInvestmentType = isStatic ? 'Static' : 'Range';
+        
+        if (isStatic) {
+            // Show modal for Static purchase amount
+            const modal = new ModalBuilder()
+                .setCustomId('mm_static_buy_modal')
+                .setTitle('Static Purchase Amount');
+                
+            const buyAmountInput = new TextInputBuilder()
+                .setCustomId('static_purchase_amount')
+                .setLabel('Purchase Amount (SOL)')
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder('0.1')
+                .setValue(state.marketMakerConfig[userId].staticPurchaseAmount?.toString() || '0.1')
+                .setRequired(true);
+                
+            modal.addComponents(
+                new ActionRowBuilder().addComponents(buyAmountInput)
+            );
+            
+            await interaction.showModal(modal);
+        } else {
+            // Show modal for Range purchase amounts
+            const modal = new ModalBuilder()
+                .setCustomId('mm_range_buy_modal')
+                .setTitle('Range Purchase Amount');
+                
+            const minBuyInput = new TextInputBuilder()
+                .setCustomId('min_purchase_amount')
+                .setLabel('Minimum Purchase Amount (SOL)')
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder('0.1')
+                .setValue(state.marketMakerConfig[userId].rangeMinPurchaseAmount?.toString() || '0.1')
+                .setRequired(true);
+                
+            const maxBuyInput = new TextInputBuilder()
+                .setCustomId('max_purchase_amount')
+                .setLabel('Maximum Purchase Amount (SOL)')
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder('0.5')
+                .setValue(state.marketMakerConfig[userId].rangeMaxPurchaseAmount?.toString() || '0.5')
+                .setRequired(true);
+                
+            modal.addComponents(
+                new ActionRowBuilder().addComponents(minBuyInput),
+                new ActionRowBuilder().addComponents(maxBuyInput)
+            );
+            
+            await interaction.showModal(modal);
+        }
+    } catch (error) {
+        console.error('Error handling buy type selection:', error);
+        await interaction.followUp({
+            content: `❌ Error: ${error.message}. Please try again.`,
+            ephemeral: true
         });
     }
 }

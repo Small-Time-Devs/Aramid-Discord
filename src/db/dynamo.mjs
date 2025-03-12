@@ -917,7 +917,17 @@ export async function saveMMSettings(userId, tokenMint, settings) {
             const item = {
                 userID: userIdString,
                 tokenMint: tokenMint,
-                ...settings,
+                inputMint: settings.inputMint || tokenMint,
+                outputMint: settings.outputMint || tokenMint,
+                minWalletBalance: settings.minWalletBalance || settings.minSolBalance || 0.05,
+                minTradeSolanaAmount: settings.minTradeSolanaAmount || settings.rangeMinPurchaseAmount || 0.1,
+                maxTradeSolanaAmount: settings.maxTradeSolanaAmount || settings.rangeMaxPurchaseAmount || 0.5,
+                minTradesPerWallet: settings.minTradesPerWallet || settings.minTrades || 1,
+                maxTradesPerWallet: settings.maxTradesPerWallet || settings.maxTrades || 10,
+                slippage: settings.slippage || 0.5,
+                tokenName: settings.tokenName || 'Unknown',
+                tokenSymbol: settings.tokenSymbol || '',
+                finalWalletAddress: settings.finalWalletAddress || null,
                 updatedAt: new Date().toISOString()
             };
             
@@ -929,7 +939,7 @@ export async function saveMMSettings(userId, tokenMint, settings) {
             console.log(`Saved settings to mmSettings table for token ${tokenMint}`);
         }
         
-        // Always save to the main settings table with mm_ prefix
+        // Always save to the main settings table with mm_ prefix for backward compatibility
         const prefixedSettings = {};
         Object.entries(settings).forEach(([key, value]) => {
             prefixedSettings[`mm_${key}`] = value;
@@ -938,6 +948,7 @@ export async function saveMMSettings(userId, tokenMint, settings) {
         // Add the token mint with both potential keys for backward compatibility
         prefixedSettings.mm_tokenMint = tokenMint;
         prefixedSettings.mm_outputMint = tokenMint;
+        prefixedSettings.mm_inputMint = tokenMint;
         
         await saveTradeSettings(userIdString, prefixedSettings);
         

@@ -26,6 +26,25 @@ import {
     handleBackToMarketMaker
 } from './actions/marketMakingControl.mjs';
 
+// Import the handlers from settings menu
+import {
+    handleSellTypeSelection,
+    handleStaticSellSubmit,
+    handleRangeSellSubmit,
+    handleBuyTypeSelection,
+    handleStaticBuySubmit,
+    handleRangeBuySubmit,
+    showAllSettingsModal,
+    handleAllSettingsSubmit,
+    handleSaveSettings
+} from './ui/settingsMenu.mjs';
+
+// Import handlers from handlers.mjs - use the correct function name
+import { 
+    handleMarketMakingInteractions,
+    handleBuyTypeModalSubmit
+} from './handlers.mjs';
+
 // Export actions but NOT the dashboard
 export {
     handleMarketMakerSettings,
@@ -42,7 +61,19 @@ export {
     handleStartMarketMaking,
     handleStopMarketMaking,
     handleViewMarketMakingStats,
-    handleBackToMarketMaker
+    handleBackToMarketMaker,
+    handleSellTypeSelection,
+    handleStaticSellSubmit,
+    handleRangeSellSubmit,
+    handleBuyTypeSelection,
+    handleStaticBuySubmit,
+    handleRangeBuySubmit,
+    showAllSettingsModal,
+    handleAllSettingsSubmit,
+    handleSaveSettings,
+    // Also export the handlers from handlers.mjs 
+    handleMarketMakingInteractions,
+    handleBuyTypeModalSubmit
 };
 
 // Export shared state
