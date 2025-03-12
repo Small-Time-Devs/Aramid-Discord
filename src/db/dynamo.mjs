@@ -813,12 +813,14 @@ export async function getMMSettings(userId, tokenMint) {
             console.log('mmSettings table does not exist or is not accessible, falling back to Settings table');
         }
         
-        // If table exists, get the specific token settings
+        // If table exists, try to get the specific token settings
         if (tableExists) {
             try {
+                // First try with separate key components
                 const result = await docClient.send(new QueryCommand({
                     TableName: 'AramidDiscord-mmSettings',
-                    KeyConditionExpression: 'userID = :userId AND tokenMint = :tokenMint',
+                    KeyConditionExpression: 'userID = :userId',
+                    FilterExpression: 'tokenMint = :tokenMint OR outputMint = :tokenMint',
                     ExpressionAttributeValues: {
                         ':userId': userIdString,
                         ':tokenMint': tokenMint
@@ -831,6 +833,23 @@ export async function getMMSettings(userId, tokenMint) {
                 }
             } catch (error) {
                 console.error('Error querying mmSettings table:', error);
+                // Fall back to GetCommand if QueryCommand doesn't work
+                try {
+                    const result = await docClient.send(new GetCommand({
+                        TableName: 'AramidDiscord-mmSettings',
+                        Key: { 
+                            userID: userIdString
+                        }
+                    }));
+                    
+                    if (result.Item && 
+                        (result.Item.tokenMint === tokenMint || result.Item.outputMint === tokenMint)) {
+                        tokenSettings = result.Item;
+                        console.log(`Found MM settings for token ${tokenMint} using GetCommand`);
+                    }
+                } catch (getError) {
+                    console.error('Error using GetCommand on mmSettings table:', getError);
+                }
             }
         }
         

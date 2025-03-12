@@ -29,7 +29,7 @@ export async function handleTokenSelection(interaction) {
         await interaction.deferUpdate({ ephemeral: true });
         
         const userId = interaction.user.id;
-        const { exists, solPublicKey } = await checkUserWallet(userId);
+        const { exists, solPublicKey, solanaDepositPublicKey } = await checkUserWallet(userId);
         
         if (!exists) {
             const embed = new EmbedBuilder()
@@ -52,6 +52,15 @@ export async function handleTokenSelection(interaction) {
             return;
         }
 
+        // Check if deposit wallet exists
+        if (!solanaDepositPublicKey) {
+            await interaction.followUp({
+                content: "❌ Market making deposit wallet not found. Please return to the dashboard and try again.",
+                ephemeral: true
+            });
+            return;
+        }
+
         // Show token selection options
         await showTokenSelectionOptions(interaction);
         
@@ -70,11 +79,22 @@ export async function handleTokenSelection(interaction) {
 export async function showTokenSelectionOptions(interaction) {
     try {
         const userId = interaction.user.id;
-        const { solPublicKey } = await checkUserWallet(userId);
-        const solBalance = await fetchSolBalance(solPublicKey);
+        const { solanaDepositPublicKey } = await checkUserWallet(userId);
         
-        // Get token balances
-        const tokenBalances = await fetchTokenBalances(solPublicKey);
+        // Check if deposit wallet exists
+        if (!solanaDepositPublicKey) {
+            await interaction.followUp({
+                content: "❌ Market making deposit wallet not found. Please return to the dashboard and try again.",
+                ephemeral: true
+            });
+            return;
+        }
+        
+        // Get deposit wallet balance
+        const solBalance = await fetchSolBalance(solanaDepositPublicKey);
+        
+        // Get token balances from deposit wallet
+        const tokenBalances = await fetchTokenBalances(solanaDepositPublicKey);
         
         // Get previous MM tokens
         const previousTokens = await getPreviousMMTokens(userId);
@@ -85,8 +105,8 @@ export async function showTokenSelectionOptions(interaction) {
             .setColor(0x6E0DAD) // Purple for market making
             .addFields(
                 { 
-                    name: 'Wallet Balance', 
-                    value: `${solBalance.toFixed(4)} SOL`, 
+                    name: 'Market Making Wallet Balance', 
+                    value: `${solBalance.toFixed(4)} SOL\n${solanaDepositPublicKey}`, 
                     inline: false 
                 }
             );
@@ -101,7 +121,7 @@ export async function showTokenSelectionOptions(interaction) {
             if (tokenList.length > 0) {
                 embed.addFields(
                     { 
-                        name: 'Your Tokens', 
+                        name: 'Your Market Making Wallet Tokens', 
                         value: '```\n' + tokenList + '\n```', 
                         inline: false 
                     }
@@ -189,7 +209,7 @@ export async function showTokenSelectionOptions(interaction) {
             rows.push(popularTokensRow);
         }
         
-        // Add user's current tokens as buttons if we have room
+        // Add tokens from the market making deposit wallet as buttons if we have room
         if (tokenBalances && tokenBalances.length > 0 && rows.length < 5) {
             const tokensWithBalance = tokenBalances.filter(token => token.amount > 0);
             const tokensPerRow = 3;
@@ -308,24 +328,49 @@ async function setMarketMakingToken(interaction, tokenAddress) {
         const userId = interaction.user.id;
         await interaction.deferUpdate();
         
-        // Fetch token details and balance
+        // Fetch token details and balance using the deposit wallet
         const tokenDetails = await fetchTokenDetails(tokenAddress);
-        const { solPublicKey } = await checkUserWallet(userId);
-        const tokenBalance = await fetchTokenBalance(solPublicKey, tokenAddress);
+        const { solanaDepositPublicKey } = await checkUserWallet(userId);
+        
+        if (!solanaDepositPublicKey) {
+            await interaction.followUp({
+                content: "❌ Market making deposit wallet not found. Please return to the dashboard and try again.",
+                ephemeral: true
+            });
+            return;
+        }
+        
+        // Try to get token balance, but don't fail if we can't
+        let tokenBalance = null;
+        try {
+            tokenBalance = await fetchTokenBalance(solanaDepositPublicKey, tokenAddress);
+        } catch (balanceError) {
+            console.error(`Error fetching token balance for ${tokenAddress}:`, balanceError);
+            // Continue with null balance
+        }
         
         // Get existing MM settings for this token
-        const mmSettings = await getMMSettings(userId, tokenAddress);
+        let mmSettings = null;
+        try {
+            mmSettings = await getMMSettings(userId, tokenAddress);
+        } catch (settingsError) {
+            console.error(`Error fetching MM settings for token ${tokenAddress}:`, settingsError);
+            // Continue without settings
+        }
         
         // Initialize or update market making config
         if (!state.marketMakerConfig[userId]) {
             state.marketMakerConfig[userId] = {
                 userId,
-                finalWalletAddress: solPublicKey
+                finalWalletAddress: solanaDepositPublicKey // Use the deposit wallet as final wallet
             };
         }
         
         // Set the token in the config
         state.marketMakerConfig[userId].outputMint = tokenAddress;
+        state.marketMakerConfig[userId].tokenMint = tokenAddress; // Ensure both are set for compatibility
+        state.marketMakerConfig[userId].tokenName = tokenDetails?.name || 'Unknown Token';
+        state.marketMakerConfig[userId].tokenSymbol = tokenDetails?.symbol || '';
         
         // Apply existing settings if available
         if (mmSettings) {

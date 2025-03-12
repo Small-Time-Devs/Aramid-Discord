@@ -9,6 +9,7 @@ import {
 } from 'discord.js';
 import { state } from '../marketMakerMain.mjs';
 import { saveCurrentMarketMakingConfig } from '../config/settings.mjs';
+import { checkUserWallet } from '../../../../../src/db/dynamo.mjs';
 
 /**
  * Display market making settings menu
@@ -257,6 +258,16 @@ export async function showMarketMakingSettingsForToken(interaction, tokenDetails
         const userId = interaction.user.id;
         const config = state.marketMakerConfig[userId];
         
+        // Get deposit wallet info
+        let solanaDepositPublicKey = null;
+        try {
+            const walletInfo = await checkUserWallet(userId);
+            solanaDepositPublicKey = walletInfo.solanaDepositPublicKey;
+        } catch (walletError) {
+            console.error('Error fetching wallet information:', walletError);
+            // Continue without the deposit wallet info
+        }
+        
         if (!config) {
             await interaction.followUp({
                 content: '❌ Configuration not found. Please return to the dashboard and try again.',
@@ -284,8 +295,9 @@ export async function showMarketMakingSettingsForToken(interaction, tokenDetails
                 value: [
                     `• Name: ${displayName}`,
                     `• Address: ${tokenMint ? `${tokenMint.substring(0, 8)}...${tokenMint.substring(tokenMint.length - 4)}` : 'Not set'}`,
-                    tokenBalance !== null ? `• Your Balance: ${tokenBalance}` : '• Balance: Unknown',
-                ].join('\n'),
+                    tokenBalance !== null ? `• Balance in MM Wallet: ${tokenBalance}` : '• Balance: Unknown',
+                    solanaDepositPublicKey ? `• MM Wallet: ${solanaDepositPublicKey.substring(0, 8)}...${solanaDepositPublicKey.substring(solanaDepositPublicKey.length - 4)}` : '',
+                ].filter(Boolean).join('\n'),
                 inline: false
             }
         );
