@@ -8,7 +8,8 @@ import { state } from '../marketMakerMain.mjs';
 import { 
     checkUserWallet, 
     getMarketMakingConfig, 
-    getTradeSettings 
+    getTradeSettings,
+    generateSolanaDepositWallet
 } from '../../../../../src/db/dynamo.mjs';
 import { 
     fetchSolBalance, 
@@ -45,7 +46,7 @@ export async function showMarketMakerDashboard(interaction, isFollowUp = false) 
             return;
         }
         
-        const { exists, solPublicKey } = await checkUserWallet(userId);
+        const { exists, solPublicKey, solanaDepositPublicKey } = await checkUserWallet(userId);
 
         // Create no wallet embed if no wallet exists
         if (!exists) {
@@ -71,9 +72,20 @@ export async function showMarketMakerDashboard(interaction, isFollowUp = false) 
             return;
         }
 
+        // Check if the user has a market making deposit wallet, if not generate one
+        let mmDepositPublicKey = solanaDepositPublicKey;
+        let mmDepositBalance = 0;
+        
+        if (!mmDepositPublicKey) {
+            // Generate a new market making deposit wallet
+            const { solanaDepositPublicKey: newPublicKey } = await generateSolanaDepositWallet(userId);
+            mmDepositPublicKey = newPublicKey;
+        }
+        
         // Fetch wallet balances
         const solBalance = await fetchSolBalance(solPublicKey);
-        const tokenBalances = await fetchTokenBalances(solPublicKey);
+        mmDepositBalance = await fetchSolBalance(mmDepositPublicKey);
+        const tokenBalances = await fetchTokenBalances(mmDepositPublicKey);
 
         // Get market maker config if it exists or initialize new one
         let marketMakerConfig = await getMarketMakingConfig(userId);
@@ -91,7 +103,18 @@ export async function showMarketMakerDashboard(interaction, isFollowUp = false) 
             .setColor(0x6E0DAD) // Purple for market making
             .addFields(
                 {
-                    name: 'Wallet Balance',
+                    name: 'Market Making Wallet',
+                    value: [
+                        '```',
+                        `SOL Balance: ${mmDepositBalance.toFixed(4)} SOL`,
+                        `Address: ${mmDepositPublicKey}`,
+                        '```',
+                        `[View on Solscan](https://solscan.io/account/${mmDepositPublicKey})`,
+                    ].join('\n'),
+                    inline: false
+                },
+                {
+                    name: 'Main Wallet',
                     value: [
                         '```',
                         `SOL Balance: ${solBalance.toFixed(4)} SOL`,
@@ -120,8 +143,8 @@ export async function showMarketMakerDashboard(interaction, isFollowUp = false) 
             );
         }
 
-        // Create action rows for buttons
-        const row1 = new ActionRowBuilder()
+        // Create a single action row with the three required buttons
+        const actionRow = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
                     .setCustomId('select_mm_token')
@@ -129,51 +152,21 @@ export async function showMarketMakerDashboard(interaction, isFollowUp = false) 
                     .setStyle(ButtonStyle.Primary)
                     .setEmoji('🪙'),
                 new ButtonBuilder()
-                    .setCustomId('mm_settings')
-                    .setLabel('Settings')
-                    .setStyle(ButtonStyle.Primary)
-                    .setEmoji('⚙️')
-            );
-
-        const row2 = new ActionRowBuilder();
-        
-        // Add start/stop button based on current status
-        if (marketMakerConfig.isRunning) {
-            row2.addComponents(
+                    .setCustomId('view_mm_stats')
+                    .setLabel('View Statistics')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('📊'),
                 new ButtonBuilder()
-                    .setCustomId('stop_market_making')
-                    .setLabel('Stop Market Making')
-                    .setStyle(ButtonStyle.Danger)
-                    .setEmoji('⏹️')
+                    .setCustomId('back_to_applications')
+                    .setLabel('Back')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('↩️')
             );
-        } else {
-            row2.addComponents(
-                new ButtonBuilder()
-                    .setCustomId('start_market_making')
-                    .setLabel('Start Market Making')
-                    .setStyle(ButtonStyle.Success)
-                    .setEmoji('▶️')
-            );
-        }
-        
-        // Add stats and back buttons
-        row2.addComponents(
-            new ButtonBuilder()
-                .setCustomId('view_mm_stats')
-                .setLabel('View Statistics')
-                .setStyle(ButtonStyle.Secondary)
-                .setEmoji('📊'),
-            new ButtonBuilder()
-                .setCustomId('back_to_applications')
-                .setLabel('Back')
-                .setStyle(ButtonStyle.Secondary)
-                .setEmoji('↩️')
-        );
 
         // Use the appropriate method based on interaction state
         await sendResponse(interaction, {
             embeds: [embed],
-            components: [row1, row2]
+            components: [actionRow]
         }, isFollowUp);
 
     } catch (error) {

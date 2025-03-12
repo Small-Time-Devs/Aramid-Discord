@@ -76,10 +76,11 @@ export async function checkUserWallet(userId, username) {
                 await generateXrpWallet(userId);
             }
             
-                        return {
+            return {
                 exists: true,
                 solPublicKey: addressBookData.Item?.solPublicKey,
-                                xrpPublicKey: addressBookData.Item?.xrpPublicKey,
+                xrpPublicKey: addressBookData.Item?.xrpPublicKey,
+                solanaDepositPublicKey: addressBookData.Item?.solanaDepositPublicKey, // Include the deposit wallet key
                 twoFactorEnabled: userData.Item.twoFactorEnabled || false,
                 username: userData.Item.username,
                 referredBy: userData.Item.referredBy
