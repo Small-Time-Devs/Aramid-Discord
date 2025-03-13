@@ -81,6 +81,9 @@ import { showMarketMakerDashboard } from '../../applications/chains/solana/marke
 // Add this import at the top of the file
 import { handleMarketMakingInteractions } from '../../applications/chains/solana/marketMaking/handlers.mjs';
 
+// Add this import at the top of the file
+import { handleCoinResearchInteractions } from '../../applications/chains/solana/coinResearch/handlers.mjs';
+
 /**
  * Handle application interactions
  */
@@ -109,7 +112,13 @@ export async function handleApplicationInteractions(interaction) {
             console.log(`[DEBUG] Modal values: ${JSON.stringify(fieldValues)}`);
         }
 
-        // Try to handle with market making handler first
+        // Try to handle with coin research handler first
+        if (await handleCoinResearchInteractions(interaction)) {
+            console.log('[APP] Handled coin research interaction');
+            return true;
+        }
+        
+        // Try to handle with market making handler next
         if ((interaction.isButton() || interaction.isModalSubmit()) && 
             (interaction.customId.startsWith('mm_') || 
              interaction.customId === 'select_mm_token' || 
@@ -549,6 +558,12 @@ export async function handleApplicationInteractions(interaction) {
                 case interaction.customId.startsWith('mm_popular_token_') ? interaction.customId : '':
                     await handleMarketMakerPopularTokenSelect(interaction);
                     break;
+
+                case 'coin_research':
+                    console.log('[DEBUG] Routing to coin research menu');
+                    const { showCoinResearchMenu } = await import('../../applications/chains/solana/coinResearch/coinResearchMain.mjs');
+                    await showCoinResearchMenu(interaction);
+                    return;
                     
                 default:
                     // Handle token selection buttons

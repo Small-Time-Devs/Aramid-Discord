@@ -463,6 +463,10 @@ export const sendApplicationMenu = async (interaction) => {
             { 
                 name: '🤖 Market Maker', 
                 value: 'Provide liquidity and earn fees' 
+            },
+            {
+                name: '🔍 Coin Research',
+                value: 'Research token metrics and market data'
             }
         )
         .setColor(0x0099FF);
@@ -479,6 +483,11 @@ export const sendApplicationMenu = async (interaction) => {
                 .setLabel('Market Maker')
                 .setStyle(ButtonStyle.Primary)
                 .setEmoji('🤖'),
+            new ButtonBuilder()
+                .setCustomId('coin_research')
+                .setLabel('Coin Research')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('🔍'),
             new ButtonBuilder()
                 .setCustomId('back_to_menu')
                 .setLabel('Back')
