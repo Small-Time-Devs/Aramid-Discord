@@ -69,6 +69,90 @@ function formatPercentage(value) {
  */
 export async function displayTokenResearch(interaction, tokenAddress, tokenInfo) {
     try {
+        console.log('[RESEARCH DISPLAY] Creating research options display');
+        
+        const metadata = tokenInfo.metadata;
+        const tokenSymbol = metadata.symbol || 'UNKNOWN';
+        const tokenName = metadata.name || 'Unknown Token';
+        
+        // Create a simple embed to show options before displaying full research
+        const optionsEmbed = new EmbedBuilder()
+            .setTitle(`${tokenSymbol} (${tokenName}) - Research Options`)
+            .setDescription(`Token ${tokenAddress.substring(0, 8)}...${tokenAddress.substring(tokenAddress.length - 4)} found! What would you like to know?`)
+            .setColor(0x00AAFF);
+        
+        if (metadata.image) {
+            optionsEmbed.setThumbnail(metadata.image);
+        }
+            
+        // Add basic info to the embed
+        optionsEmbed.addFields(
+            {
+                name: 'Basic Information',
+                value: [
+                    `• Symbol: ${tokenSymbol}`,
+                    `• Name: ${tokenName}`,
+                    `• Price: ${formatCurrency(tokenInfo.price || 0)}`,
+                    `• 24h Change: ${formatPercentage(tokenInfo.priceChange['24h'] || 0)}`
+                ].join('\n'),
+                inline: false
+            }
+        );
+            
+        // Add selection buttons
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`show_basic_info_${tokenAddress}`)
+                    .setLabel('View Detailed Information')
+                    .setStyle(ButtonStyle.Primary)
+                    .setEmoji('📊'),
+                new ButtonBuilder()
+                    .setCustomId(`ask_aramid_ai_${tokenAddress}`)
+                    .setLabel('Ask Aramid AI')
+                    .setStyle(ButtonStyle.Success)
+                    .setEmoji('🤖'),
+                new ButtonBuilder()
+                    .setCustomId('back_to_research')
+                    .setLabel('Research Another')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('🔍')
+            );
+        
+        // Send the options selection as a follow-up
+        console.log('[RESEARCH DISPLAY] Sending research options');
+        await interaction.followUp({
+            embeds: [optionsEmbed],
+            components: [row],
+            ephemeral: true
+        });
+        
+    } catch (error) {
+        console.error('[RESEARCH DISPLAY] Error displaying research options:', error);
+        await interaction.followUp({
+            content: `❌ Error displaying token information: ${error.message}`,
+            ephemeral: true,
+            components: [
+                new ActionRowBuilder()
+                    .addComponents(
+                        new ButtonBuilder()
+                            .setCustomId('back_to_research')
+                            .setLabel('Back to Research')
+                            .setStyle(ButtonStyle.Secondary)
+                    )
+            ]
+        });
+    }
+}
+
+/**
+ * Display detailed token information
+ * @param {Object} interaction - Discord interaction
+ * @param {string} tokenAddress - Token address
+ * @param {Object} tokenInfo - Token information object
+ */
+export async function displayDetailedTokenInfo(interaction, tokenAddress, tokenInfo) {
+    try {
         const metadata = tokenInfo.metadata;
         const tokenSymbol = metadata.symbol || 'UNKNOWN';
         const tokenName = metadata.name || 'Unknown Token';
@@ -157,6 +241,11 @@ export async function displayTokenResearch(interaction, tokenAddress, tokenInfo)
         const row = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
+                    .setCustomId(`ask_aramid_ai_${tokenAddress}`)
+                    .setLabel('Ask Aramid AI')
+                    .setStyle(ButtonStyle.Success)
+                    .setEmoji('🤖'),
+                new ButtonBuilder()
                     .setCustomId('refresh_research')
                     .setLabel('Refresh Data')
                     .setStyle(ButtonStyle.Primary)
@@ -164,26 +253,131 @@ export async function displayTokenResearch(interaction, tokenAddress, tokenInfo)
                 new ButtonBuilder()
                     .setCustomId('research_enter_address')
                     .setLabel('Research Another')
-                    .setStyle(ButtonStyle.Success)
+                    .setStyle(ButtonStyle.Primary)
                     .setEmoji('🔍'),
                 new ButtonBuilder()
                     .setCustomId('back_to_research')
-                    .setLabel('Back to Menu')
+                    .setLabel('Back')
                     .setStyle(ButtonStyle.Secondary)
                     .setEmoji('↩️')
             );
         
         // Send the research results
-        await interaction.editReply({
-            content: null,
+        await interaction.update({
             embeds: [embed],
             components: [row]
         });
         
     } catch (error) {
-        console.error('Error displaying research results:', error);
-        await interaction.editReply({
-            content: `❌ Error displaying research results: ${error.message}`,
+        console.error('Error displaying detailed token info:', error);
+        await interaction.update({
+            content: `❌ Error displaying token details: ${error.message}`,
+            embeds: [],
+            components: [
+                new ActionRowBuilder()
+                    .addComponents(
+                        new ButtonBuilder()
+                            .setCustomId('back_to_research')
+                            .setLabel('Back to Research')
+                            .setStyle(ButtonStyle.Secondary)
+                    )
+            ]
+        });
+    }
+}
+
+/**
+ * Display AI analysis results
+ * @param {Object} interaction - Discord interaction
+ * @param {string} tokenAddress - Token address
+ * @param {Object} aiResponse - AI analysis response
+ * @param {Object} tokenInfo - Basic token information
+ */
+export async function displayAiAnalysis(interaction, tokenAddress, aiResponse, tokenInfo) {
+    try {
+        // Check if we have a valid AI response
+        if (!aiResponse || !Array.isArray(aiResponse) || aiResponse.length === 0) {
+            throw new Error('Invalid AI response received');
+        }
+        
+        const analysis = aiResponse[0]; // Get the first analysis
+        const metadata = tokenInfo.metadata;
+        const tokenSymbol = metadata.symbol || 'UNKNOWN';
+        const tokenName = metadata.name || 'Unknown Token';
+        
+        // Determine color based on decision
+        let decisionColor = 0x00AAFF; // Default blue
+        if (analysis.decision.toLowerCase().includes('bullish') || 
+            analysis.decision.toLowerCase().includes('positive')) {
+            decisionColor = 0x00FF00; // Green for positive
+        } else if (analysis.decision.toLowerCase().includes('cautious') || 
+                   analysis.decision.toLowerCase().includes('neutral')) {
+            decisionColor = 0xFFAA00; // Orange for neutral/cautious
+        } else if (analysis.decision.toLowerCase().includes('bearish') || 
+                   analysis.decision.toLowerCase().includes('risk')) {
+            decisionColor = 0xFF0000; // Red for negative
+        }
+        
+        // Create main embed for AI analysis
+        const embed = new EmbedBuilder()
+            .setTitle(`${tokenSymbol} (${tokenName}) - Aramid AI Analysis`)
+            .setDescription(`Analysis by: ${analysis.name} - ${analysis.personality}`)
+            .setColor(decisionColor)
+            .addFields(
+                {
+                    name: 'Decision',
+                    value: analysis.decision,
+                    inline: false
+                }
+            );
+        
+        // If we have an image URL, set it as the thumbnail
+        if (metadata.image) {
+            embed.setThumbnail(metadata.image);
+        }
+        
+        // Set footer
+        embed.setFooter({
+            text: `Analysis for ${tokenAddress.substring(0, 8)}...${tokenAddress.substring(tokenAddress.length - 4)}`
+        });
+        
+        // Create a second embed for the detailed analysis text
+        const analysisEmbed = new EmbedBuilder()
+            .setTitle('Detailed Analysis')
+            .setDescription(analysis.response)
+            .setColor(decisionColor);
+        
+        // Add action buttons
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`show_basic_info_${tokenAddress}`)
+                    .setLabel('Show Basic Token Info')
+                    .setStyle(ButtonStyle.Primary)
+                    .setEmoji('📊'),
+                new ButtonBuilder()
+                    .setCustomId('research_enter_address')
+                    .setLabel('Research Another')
+                    .setStyle(ButtonStyle.Primary)
+                    .setEmoji('🔍'),
+                new ButtonBuilder()
+                    .setCustomId('back_to_research')
+                    .setLabel('Back')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('↩️')
+            );
+        
+        // Send the AI analysis
+        await interaction.update({
+            embeds: [embed, analysisEmbed],
+            components: [row]
+        });
+        
+    } catch (error) {
+        console.error('Error displaying AI analysis:', error);
+        await interaction.update({
+            content: `❌ Error displaying AI analysis: ${error.message}`,
+            embeds: [],
             components: [
                 new ActionRowBuilder()
                     .addComponents(

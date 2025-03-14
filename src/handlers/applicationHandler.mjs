@@ -2,7 +2,6 @@ import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilde
 import { sendApplicationMenu, sendChainSelectionForApp } from '../utils/discordMessages.mjs';
 import { checkUserWallet } from '../db/dynamo.mjs';
 
-// Update imports to reference settingsConfig.mjs instead of settings.mjs
 import { 
     handleTradeSettings, 
     showQuickBuyModal, 
@@ -12,7 +11,6 @@ import {
     handleBackToSpotTrading
 } from '../../applications/chains/solana/spotTrading/actions/settingsConfig.mjs';
 
-// Import other handlers from solSpotTrading.mjs
 import { 
     handleTokenAddressInput,
     handleTokenAddressSubmit,
@@ -32,7 +30,6 @@ import {
     handleQuickBuySelection
 } from '../../applications/chains/solana/spotTrading/solSpotTrading.mjs';
 
-// Update this import to import directly from tokenSelling.mjs instead of through solSpotTrading.mjs
 import { 
     handleSellToken,
     handleTokenSellSelection,
@@ -42,13 +39,9 @@ import {
     handleExecuteSell
 } from '../../applications/chains/solana/spotTrading/actions/tokenSelling.mjs';
 
-// Add this import at the top with other imports
 import { developmentFlags, devFeatureMessage, isWhitelistedForDevFeatures, isFeatureAvailable, logFeatureStatus } from '../globals/global.mjs';
-
-// Update this import to get the function directly from the dashboard file
 import { showSolanaSpotTradingMenu } from '../../applications/chains/solana/spotTrading/ui/dashboard.mjs';
 
-// Add these imports at the top with other imports
 import { 
     showChannelsManagementMenu,
     handleRegisterChannel,
@@ -56,9 +49,9 @@ import {
     handleSetPrimaryChannel,
     handleBackToSettings
 } from '../utils/settingsMenu.mjs';
+
 import { registerUserChannel } from '../utils/channelManager.mjs';
 
-// Import the market making functions
 import {
     handleMarketMakerSettings,
     handleTokenSelection as handleMarketMakerTokenSelection,  // Rename to avoid conflicts
@@ -75,14 +68,10 @@ import {
     handleViewMarketMakingStats
 } from '../../applications/chains/solana/marketMaking/marketMakerMain.mjs';
 
-// Import dashboard separately to avoid duplicate declaration
 import { showMarketMakerDashboard } from '../../applications/chains/solana/marketMaking/ui/dashboard.mjs';
-
-// Add this import at the top of the file
 import { handleMarketMakingInteractions } from '../../applications/chains/solana/marketMaking/handlers.mjs';
-
-// Add this import at the top of the file
 import { handleCoinResearchInteractions } from '../../applications/chains/solana/coinResearch/handlers.mjs';
+import { showCoinResearchMenu } from '../../applications/chains/solana/coinResearch/coinResearchMain.mjs';
 
 /**
  * Handle application interactions
@@ -95,29 +84,143 @@ export async function handleApplicationInteractions(interaction) {
         // This helps build the channel list automatically over time
         await registerUserChannel(userId, interaction.channelId);
 
-        // Debug logging for all interactions
+        // Enhanced logging for all interactions
         if (interaction.isButton()) {
-            console.log(`[DEBUG] Button interaction: ${interaction.customId}`);
+            console.log(`[APP HANDLER] Button: ${interaction.customId}, User: ${userId}`);
             logFeatureStatus(userId);
         } else if (interaction.isModalSubmit()) {
-            console.log(`[DEBUG] Modal submission: ${interaction.customId}`);
-            console.log(`[DEBUG] Modal user: ${interaction.user.id} (${interaction.user.tag})`);
-            console.log(`[DEBUG] Modal fields: ${Array.from(interaction.fields.fields.keys()).join(', ')}`);
+            console.log(`[APP HANDLER] Modal: ${interaction.customId}, User: ${userId}`);
+            console.log(`Processing modal submission with ID: ${interaction.customId}`);
             
-            // Log the actual values for debugging (redact if sensitive)
+            // Log fields for debugging
             const fieldValues = {};
             interaction.fields.fields.forEach((value, key) => {
                 fieldValues[key] = value.value;
             });
-            console.log(`[DEBUG] Modal values: ${JSON.stringify(fieldValues)}`);
+            console.log(`[APP HANDLER] Modal fields: ${JSON.stringify(fieldValues)}`);
         }
 
-        // Try to handle with coin research handler first
-        if (await handleCoinResearchInteractions(interaction)) {
-            console.log('[APP] Handled coin research interaction');
-            return true;
+        // HANDLE MODALS FIRST - this needs to be the absolute first thing
+        if (interaction.isModalSubmit()) {
+            console.log(`[MODAL DEBUG] Processing modal: ${interaction.customId}`);
+            
+            // Special handling for coin research modal
+            if (interaction.customId === 'coin_research_address_modal') {
+                console.log('[MODAL DEBUG] Processing coin research address modal');
+                
+                try {
+                    const { handleAddressSubmit } = await import(
+                        '../../applications/chains/solana/coinResearch/coinResearchMain.mjs'
+                    );
+                    
+                    await handleAddressSubmit(interaction);
+                    return true;
+                } catch (err) {
+                    console.error('[MODAL DEBUG] Error in coin research modal handling:', err);
+                    
+                    // Make sure we send a response if something went wrong
+                    if (!interaction.replied && !interaction.deferred) {
+                        await interaction.reply({
+                            content: `❌ Error processing token research: ${err.message}`,
+                            ephemeral: true
+                        });
+                    } else {
+                        await interaction.followUp({
+                            content: `❌ Error processing token research: ${err.message}`,
+                            ephemeral: true
+                        });
+                    }
+                    return true;
+                }
+            }
+            
+            // Other modal cases
+            switch(interaction.customId) {
+                // Direct prioritized handling for coin research modal
+                case 'coin_research_address_modal':
+                    console.log('[MODAL DEBUG] Processing coin research address modal...');
+                    const { handleAddressSubmit } = await import(
+                        '../../applications/chains/solana/coinResearch/coinResearchMain.mjs'
+                    );
+                    await handleAddressSubmit(interaction);
+                    return true;
+                
+                // Other modal cases
+                case 'quick_buy_modal':
+                    await handleQuickBuySubmission(interaction);
+                    return true;
+                    
+                case 'quick_sell_modal':
+                    await handleQuickSellSubmission(interaction);
+                    return true;
+                    
+                case 'token_address_modal':
+                case 'token_address_input_modal':
+                    await handleTokenAddressSubmit(interaction);
+                    return true;
+                    
+                case 'purchase_amount_modal':
+                    await handlePurchaseAmountSubmit(interaction);
+                    return true;
+                    
+                case 'sell_percentage_modal':
+                    await handleSellPercentageSubmit(interaction);
+                    return true;
+                    
+                default:
+                    console.log(`[MODAL DEBUG] Unhandled modal: ${interaction.customId}`);
+            }
+        }
+
+        // Handle research_enter_address button - always prioritize button for modal display
+        if (interaction.isButton() && interaction.customId === 'research_enter_address') {
+            console.log('[APP HANDLER] Showing coin research address modal');
+            
+            try {
+                const { showAddressEntryModal } = await import(
+                    '../../applications/chains/solana/coinResearch/coinResearchMain.mjs'
+                );
+                await showAddressEntryModal(interaction);
+                return true;
+            } catch (err) {
+                console.error('[APP HANDLER] Error showing coin research modal:', err);
+                
+                if (!interaction.replied) {
+                    await interaction.reply({
+                        content: 'Error showing address input form. Please try again.',
+                        ephemeral: true
+                    });
+                }
+                return true;
+            }
+        }
+
+        // Handle coin_research button
+        if (interaction.isButton() && interaction.customId === 'coin_research') {
+            console.log('[APP HANDLER] Showing coin research menu');
+            
+            try {
+                await showCoinResearchMenu(interaction);
+                return true;
+            } catch (err) {
+                console.error('[APP HANDLER] Error showing coin research menu:', err);
+                
+                if (!interaction.replied) {
+                    await interaction.reply({
+                        content: 'Error showing coin research menu. Please try again.',
+                        ephemeral: true
+                    });
+                }
+                return true;
+            }
         }
         
+        // Handle coin research button interactions via handler
+        if (await handleCoinResearchInteractions(interaction)) {
+            console.log('[APP HANDLER] Handled coin research interaction');
+            return true;
+        }
+
         // Try to handle with market making handler next
         if ((interaction.isButton() || interaction.isModalSubmit()) && 
             (interaction.customId.startsWith('mm_') || 
@@ -174,6 +277,29 @@ export async function handleApplicationInteractions(interaction) {
                     });
                     return;
             }
+        }
+        
+        // Handle coin research button interactions via handler
+        if (await handleCoinResearchInteractions(interaction)) {
+            console.log('[APP HANDLER] Handled coin research interaction');
+            return true;
+        }
+
+        // Try to handle with market making handler next
+        if ((interaction.isButton() || interaction.isModalSubmit()) && 
+            (interaction.customId.startsWith('mm_') || 
+             interaction.customId === 'select_mm_token' || 
+             interaction.customId === 'back_to_mm_dashboard' ||
+             interaction.customId === 'start_market_making' ||
+             interaction.customId === 'stop_market_making' ||
+             interaction.customId === 'view_mm_stats' ||
+             interaction.customId === 'set_mm_spread' ||
+             interaction.customId === 'set_mm_range' ||
+             interaction.customId === 'toggle_auto_adjust' ||
+             interaction.customId === 'save_mm_config')) {
+            
+            const handled = await handleMarketMakingInteractions(interaction);
+            if (handled) return;
         }
         
         // Now handle buttons and other interaction types
@@ -560,10 +686,9 @@ export async function handleApplicationInteractions(interaction) {
                     break;
 
                 case 'coin_research':
-                    console.log('[DEBUG] Routing to coin research menu');
-                    const { showCoinResearchMenu } = await import('../../applications/chains/solana/coinResearch/coinResearchMain.mjs');
+                    console.log('[APP HANDLER] Direct handling of coin_research button');
                     await showCoinResearchMenu(interaction);
-                    return;
+                    return true;
                     
                 default:
                     // Handle token selection buttons

@@ -62,67 +62,129 @@ export async function showCoinResearchMenu(interaction) {
 }
 
 /**
- * Show modal for entering token address
+ * Show modal for entering token address - SUPER SIMPLIFIED
  * @param {Object} interaction - Discord interaction
  */
 export async function showAddressEntryModal(interaction) {
     try {
+        console.log('[COIN RESEARCH] Creating address entry modal');
+        
+        // Create the simplest possible modal
         const modal = new ModalBuilder()
             .setCustomId('coin_research_address_modal')
             .setTitle('Research Solana Token');
             
+        // Create a very simple text input with minimal options
         const addressInput = new TextInputBuilder()
             .setCustomId('token_address')
             .setLabel('Token Contract Address')
             .setStyle(TextInputStyle.Short)
-            .setPlaceholder('Enter Solana token address/mint')
             .setRequired(true);
             
-        const row = new ActionRowBuilder().addComponents(addressInput);
-        modal.addComponents(row);
+        // Add input to modal
+        modal.addComponents(new ActionRowBuilder().addComponents(addressInput));
         
+        // Show the modal
         await interaction.showModal(modal);
+        console.log('[COIN RESEARCH] Modal shown successfully');
+        
     } catch (error) {
-        console.error('Error showing token address modal:', error);
-        await interaction.reply({
-            content: '❌ Error showing address input. Please try again.',
-            ephemeral: true
-        });
+        console.error('[COIN RESEARCH] Error showing token address modal:', error);
+        // Try to respond with an error message
+        try {
+            await interaction.reply({
+                content: '❌ Error showing address input. Please try again.',
+                ephemeral: true
+            });
+        } catch (replyError) {
+            console.error('[COIN RESEARCH] Error sending error reply:', replyError);
+        }
     }
 }
 
 /**
- * Handle address submission and start research
+ * Handle address submission and start research - FIXED VERSION
  * @param {Object} interaction - Modal submit interaction
  */
 export async function handleAddressSubmit(interaction) {
     try {
+        console.log('[COIN RESEARCH] Processing address submission');
+        
+        // Get token address with proper error handling
+        let tokenAddress;
+        try {
+            tokenAddress = interaction.fields.getTextInputValue('token_address');
+            console.log(`[COIN RESEARCH] Token address: "${tokenAddress}"`);
+        } catch (error) {
+            console.error('[COIN RESEARCH] Error getting token address:', error);
+            await interaction.reply({
+                content: '❌ Failed to read token address. Please try again.',
+                ephemeral: true
+            });
+            return;
+        }
+        
+        // Basic validation
+        if (!tokenAddress || tokenAddress.trim() === '') {
+            await interaction.reply({
+                content: '❌ Please provide a valid token address!',
+                ephemeral: true
+            });
+            return;
+        }
+        
+        // Format the address and add first reply
+        tokenAddress = tokenAddress.trim();
+        
+        await interaction.reply({
+            content: `🔍 Researching token: \`${tokenAddress}\`...`,
+            ephemeral: true
+        });
+        
+        // Save to state
         const userId = interaction.user.id;
-        const tokenAddress = interaction.fields.getTextInputValue('token_address').trim();
-        
-        await interaction.deferReply({ ephemeral: true });
-        
-        // Store in state
         state.activeResearch[userId] = {
             tokenAddress,
             startTime: Date.now()
         };
         
-        await interaction.editReply({
-            content: `🔍 Researching token: \`${tokenAddress}\`\nPlease wait while we gather information...`
-        });
-        
-        // Fetch token info
-        const tokenInfo = await fetchTokenInfo(tokenAddress);
-        
-        // Display research results
-        await displayTokenResearch(interaction, tokenAddress, tokenInfo);
-        
+        try {
+            // Fetch token info
+            console.log(`[COIN RESEARCH] Fetching token info for ${tokenAddress}`);
+            const tokenInfo = await fetchTokenInfo(tokenAddress);
+            console.log('[COIN RESEARCH] Token info fetched successfully');
+            
+            // Store in state
+            state.activeResearch[userId].tokenInfo = tokenInfo;
+            
+            // Show research results
+            await displayTokenResearch(interaction, tokenAddress, tokenInfo);
+            
+        } catch (fetchError) {
+            console.error('[COIN RESEARCH] Error fetching token data:', fetchError);
+            await interaction.followUp({
+                content: `❌ Error researching token: ${fetchError.message}. Please check the address and try again.`,
+                ephemeral: true
+            });
+        }
     } catch (error) {
-        console.error('Error researching token:', error);
-        await interaction.editReply({
-            content: `❌ Error researching token: ${error.message}. Please check the address and try again.`
-        });
+        console.error('[COIN RESEARCH] Error in handleAddressSubmit:', error);
+        
+        try {
+            if (!interaction.replied) {
+                await interaction.reply({ 
+                    content: `❌ Error researching token: ${error.message}. Please try again.`,
+                    ephemeral: true 
+                });
+            } else {
+                await interaction.followUp({ 
+                    content: `❌ Error researching token: ${error.message}. Please try again.`,
+                    ephemeral: true 
+                });
+            }
+        } catch (replyError) {
+            console.error('[COIN RESEARCH] Error sending error response:', replyError);
+        }
     }
 }
 
