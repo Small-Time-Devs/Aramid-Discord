@@ -103,81 +103,63 @@ export async function showAddressEntryModal(interaction) {
 }
 
 /**
- * Handle address submission and start research - FIXED VERSION
+ * Handle address submission and start research - FIXED TO MATCH TOKEN SELECTION PATTERN
  * @param {Object} interaction - Modal submit interaction
  */
 export async function handleAddressSubmit(interaction) {
     try {
-        console.log('[COIN RESEARCH] Processing address submission');
+        // First defer the reply to prevent timeout
+        await interaction.deferReply({ ephemeral: true });
+        console.log('[COIN RESEARCH] Processing coin research address submission');
         
-        // Get token address with proper error handling
-        let tokenAddress;
-        try {
-            tokenAddress = interaction.fields.getTextInputValue('token_address');
-            console.log(`[COIN RESEARCH] Token address: "${tokenAddress}"`);
-        } catch (error) {
-            console.error('[COIN RESEARCH] Error getting token address:', error);
-            await interaction.reply({
-                content: '❌ Failed to read token address. Please try again.',
-                ephemeral: true
-            });
-            return;
-        }
+        // Get token address from modal fields
+        const tokenAddress = interaction.fields.getTextInputValue('token_address');
+        console.log(`[COIN RESEARCH] Token address received: ${tokenAddress}`);
         
-        // Basic validation
+        // Validate the token address
         if (!tokenAddress || tokenAddress.trim() === '') {
-            await interaction.reply({
-                content: '❌ Please provide a valid token address!',
-                ephemeral: true
+            await interaction.editReply({ 
+                content: '❌ Please provide a valid token address!' 
             });
             return;
         }
         
-        // Format the address and add first reply
-        tokenAddress = tokenAddress.trim();
-        
-        await interaction.reply({
-            content: `🔍 Researching token: \`${tokenAddress}\`...`,
-            ephemeral: true
+        // Update the UI to show we're working on it
+        await interaction.editReply({
+            content: `🔍 Researching token: \`${tokenAddress}\`\nPlease wait while I gather information...`
         });
         
         // Save to state
         const userId = interaction.user.id;
         state.activeResearch[userId] = {
-            tokenAddress,
+            tokenAddress: tokenAddress.trim(),
             startTime: Date.now()
         };
         
-        try {
-            // Fetch token info
-            console.log(`[COIN RESEARCH] Fetching token info for ${tokenAddress}`);
-            const tokenInfo = await fetchTokenInfo(tokenAddress);
-            console.log('[COIN RESEARCH] Token info fetched successfully');
-            
-            // Store in state
-            state.activeResearch[userId].tokenInfo = tokenInfo;
-            
-            // Show research results
-            await displayTokenResearch(interaction, tokenAddress, tokenInfo);
-            
-        } catch (fetchError) {
-            console.error('[COIN RESEARCH] Error fetching token data:', fetchError);
-            await interaction.followUp({
-                content: `❌ Error researching token: ${fetchError.message}. Please check the address and try again.`,
-                ephemeral: true
-            });
-        }
+        // Fetch token info
+        console.log(`[COIN RESEARCH] Fetching token info for ${tokenAddress}`);
+        const tokenInfo = await fetchTokenInfo(tokenAddress);
+        
+        // Store in state
+        state.activeResearch[userId].tokenInfo = tokenInfo;
+        
+        // Display research results with the follow-up pattern
+        console.log('[COIN RESEARCH] Displaying token research results');
+        await displayTokenResearch(interaction, tokenAddress.trim(), tokenInfo);
+        
     } catch (error) {
         console.error('[COIN RESEARCH] Error in handleAddressSubmit:', error);
         
         try {
-            if (!interaction.replied) {
-                await interaction.reply({ 
-                    content: `❌ Error researching token: ${error.message}. Please try again.`,
-                    ephemeral: true 
+            // If we've already replied (which we should have due to deferReply),
+            // then use editReply or followUp
+            if (interaction.deferred || interaction.replied) {
+                await interaction.editReply({ 
+                    content: `❌ Error researching token: ${error.message}. Please try again.`
                 });
             } else {
-                await interaction.followUp({ 
+                // Fallback in case somehow we haven't replied yet
+                await interaction.reply({ 
                     content: `❌ Error researching token: ${error.message}. Please try again.`,
                     ephemeral: true 
                 });
