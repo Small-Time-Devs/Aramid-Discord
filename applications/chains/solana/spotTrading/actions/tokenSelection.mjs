@@ -17,6 +17,7 @@ import {
 } from '../functions/utils.mjs';
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { showTokenPurchaseConfig } from '../ui/purchaseConfig.mjs';
+import { popularTokens } from '../../../../../src/globals/global.mjs';
 
 /**
  * Handle token address input modal
@@ -62,22 +63,22 @@ export async function handleBuyNewToken(interaction) {
                     .setEmoji('📝')
             );
         
-        // Add popular tokens
-        const row2 = new ActionRowBuilder()
-            .addComponents(
+        // Add popular tokens from global config that are flagged for spot trading
+        const row2 = new ActionRowBuilder();
+        
+        // Filter tokens by the displayInSpotTrading flag
+        const spotTradingTokens = Object.entries(popularTokens)
+            .filter(([_, token]) => token.displayInSpotTrading)
+            .slice(0, 3); // Limit to 3 tokens for UI space
+        
+        spotTradingTokens.forEach(([key, token]) => {
+            row2.addComponents(
                 new ButtonBuilder()
-                    .setCustomId('popular_token_sol')
-                    .setLabel('SOL')
-                    .setStyle(ButtonStyle.Success),
-                new ButtonBuilder()
-                    .setCustomId('popular_token_bonk')
-                    .setLabel('BONK')
-                    .setStyle(ButtonStyle.Success),
-                new ButtonBuilder()
-                    .setCustomId('popular_token_jup')
-                    .setLabel('JUP')
+                    .setCustomId(`popular_token_${key.toLowerCase()}`)
+                    .setLabel(token.symbol)
                     .setStyle(ButtonStyle.Success)
             );
+        });
         
         // Add recently bought tokens if available
         const userId = interaction.user.id;
@@ -379,7 +380,7 @@ export async function showTokenBuyOptions(interaction) {
                 }
             );
             
-        // Add popular tokens - you can customize this list
+        // Add popular tokens section
         embed.addFields({
             name: 'Popular Tokens',
             value: 'Click a button below to select a token or enter a custom address',
@@ -401,22 +402,22 @@ export async function showTokenBuyOptions(interaction) {
                     .setEmoji('↩️')
             );
             
-        // Add some popular tokens as buttons (example)
-        const row2 = new ActionRowBuilder()
-            .addComponents(
+        // Add popular tokens from global config
+        const row2 = new ActionRowBuilder();
+        
+        // Filter tokens by the displayInSpotTrading flag
+        const spotTradingTokens = Object.entries(popularTokens)
+            .filter(([_, token]) => token.displayInSpotTrading)
+            .slice(0, 3); // Limit to 3 tokens for UI space
+        
+        spotTradingTokens.forEach(([key, token]) => {
+            row2.addComponents(
                 new ButtonBuilder()
-                    .setCustomId('popular_token_rac')
-                    .setLabel('RAC')
-                    .setStyle(ButtonStyle.Success),
-                new ButtonBuilder()
-                    .setCustomId('popular_token_bonk')
-                    .setLabel('BONK')
-                    .setStyle(ButtonStyle.Success),
-                new ButtonBuilder()
-                    .setCustomId('popular_token_jup')
-                    .setLabel('JUP')
+                    .setCustomId(`popular_token_${key.toLowerCase()}`)
+                    .setLabel(token.symbol)
                     .setStyle(ButtonStyle.Success)
             );
+        });
             
         await interaction.editReply({
             embeds: [embed],
@@ -436,48 +437,22 @@ export async function showTokenBuyOptions(interaction) {
  */
 export async function handlePopularTokenSelect(interaction) {
     try {
-        const tokenKey = interaction.customId.replace('popular_token_', '');
+        const tokenKey = interaction.customId.replace('popular_token_', '').toUpperCase();
         const userId = interaction.user.id;
-        let tokenAddress = '';
         
-        // Map token keys to addresses
-        switch (tokenKey) {
-            case 'rac':
-                tokenAddress = 'YtfMZ4jg2ubdz4GsNdJWpJk3YTM5pUdMrFN7N6yvqZA';
-                break;
-            case 'bonk':
-                tokenAddress = 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263';
-                break;
-            case 'jup':
-                tokenAddress = 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN';
-                break;
-            default:
-                await interaction.reply({
-                    content: '❌ Invalid token selection.',
-                    ephemeral: true
-                });
-                return;
+        // Get the token from the centralized popular tokens list
+        const token = popularTokens[tokenKey];
+        
+        if (!token || !token.address) {
+            await interaction.reply({
+                content: '❌ Invalid token selection or token not found in our database.',
+                ephemeral: true
+            });
+            return;
         }
         
-        // Get priority fees with error handling
-        let priorityFees;
-        try {
-            priorityFees = await getSolanaPriorityFee();
-        } catch (error) {
-            console.error('Error getting priority fees, using default values:', error);
-            priorityFees = {
-                lowFee: 1000,
-                mediumFee: 10000,
-                highFee: 100000
-            };
-        }
-        
-        // Use null-safe access with default values
-        const mediumFee = priorityFees?.mediumFee || 10000;
-        
-        // Ensure we have a valid configuration
+        // Initialize configuration if needed
         if (!state.solanaBuyTokenConfig[userId]) {
-            console.log('Creating new configuration for user');
             const { exists, solPublicKey, solPrivateKey } = await checkUserWallet(userId);
             if (!exists) {
                 await interaction.reply({
@@ -487,9 +462,24 @@ export async function handlePopularTokenSelect(interaction) {
                 return;
             }
             
+            // Get priority fees with error handling
+            let priorityFees;
+            try {
+                priorityFees = await getSolanaPriorityFee();
+            } catch (error) {
+                console.error('Error getting priority fees, using default values:', error);
+                priorityFees = {
+                    lowFee: 1000,
+                    mediumFee: 10000,
+                    highFee: 100000
+                };
+            }
+            
+            const mediumFee = priorityFees?.mediumFee || 10000;
+            
             state.solanaBuyTokenConfig[userId] = {
                 userId,
-                outputMint: tokenAddress,
+                outputMint: token.address,
                 amount: 0.01,
                 jito: false,
                 solPublicKey,
@@ -500,37 +490,55 @@ export async function handlePopularTokenSelect(interaction) {
             };
         } else {
             // Update existing configuration
-            state.solanaBuyTokenConfig[userId].outputMint = tokenAddress;
+            state.solanaBuyTokenConfig[userId].outputMint = token.address;
         }
         
-        // Fetch token details and user's SOL balance
-        const tokenDetails = await fetchTokenDetails(tokenAddress);
-        const tokenPrice = await fetchTokenPrice(tokenAddress);
-        const solBalance = await fetchSolBalance(state.solanaBuyTokenConfig[userId].solPublicKey);
+        // Show purchase config for the selected token
+        await interaction.deferUpdate();
         
-        // Get token name with better fallback logic
-        const tokenName = tokenDetails?.name || 'Unknown Token';
-        const tokenSymbol = tokenDetails?.symbol || '';
-        const displayName = tokenSymbol ? `${tokenName} (${tokenSymbol})` : tokenName;
+        // Create token details object from popularTokens data
+        const tokenDetails = {
+            name: token.name,
+            symbol: token.symbol,
+            address: token.address,
+            decimals: token.decimals
+        };
         
-        console.log(`Selected popular token: ${displayName}, Address: ${tokenAddress}`);
-        console.log('Token details:', tokenDetails);
+        // Fetch token price
+        let tokenPrice = null;
+        try {
+            tokenPrice = await fetchTokenPrice(token.address);
+        } catch (error) {
+            console.error(`Error fetching price for ${token.symbol}:`, error);
+        }
         
-        // Use the same purchase config display function for consistency
-        await showTokenPurchaseConfig(interaction, tokenDetails, tokenPrice, false);
+        await showTokenPurchaseConfig(interaction, tokenDetails, tokenPrice, true);
         
     } catch (error) {
         console.error('Error handling popular token selection:', error);
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({
-                content: '❌ Error selecting token. Please try again.',
-                ephemeral: true
-            });
-        } else {
-            await interaction.followUp({
-                content: '❌ Error selecting token. Please try again.',
-                ephemeral: true
-            });
-        }
+        await interaction.followUp({
+            content: 'Error selecting token. Please try again.',
+            ephemeral: true
+        });
+    }
+}
+
+/**
+ * Handle recent token selection
+ */
+export async function handleRecentTokenSelect(interaction) {
+    try {
+        const tokenAddress = interaction.customId.replace('recent_token_', '');
+        
+        // Show purchase config for the selected token
+        await interaction.deferUpdate();
+        await showTokenPurchaseConfig(interaction, tokenAddress);
+        
+    } catch (error) {
+        console.error('Error handling recent token selection:', error);
+        await interaction.followUp({
+            content: 'Error selecting token. Please try again.',
+            ephemeral: true
+        });
     }
 }

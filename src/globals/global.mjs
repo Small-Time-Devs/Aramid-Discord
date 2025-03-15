@@ -95,3 +95,38 @@ export const logFeatureStatus = (userId) => {
         marketMakerInDev: developmentFlags.applications?.marketMaker === true,
     });
 };
+
+// Popular tokens configuration for use across all applications
+export const popularTokens = {
+    // Mainnet Tokens
+    USDC: {
+        address: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        symbol: "USDC",
+        name: "USD Coin",
+        decimals: 6,
+        logoURI: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png",
+        tags: ["stablecoin"],
+        displayInSpotTrading: true,
+        displayInMarketMaking: false
+    },
+    BABYPOES: {
+        address: "83xejQ2QoHWD47REppszZPbvkzHUyem5SSkjyXBFieoC",
+        symbol: "BABYPOES",
+        name: "BabyPOES",
+        decimals: 9,
+        logoURI: "https://babypoes.electraprotocol.com/wp-content/uploads/2024/11/cropped-cropped-photo_2024-11-22_08-34-44-141x122.jpg",
+        tags: ["meme"],
+        displayInSpotTrading: true,
+        displayInMarketMaking: false
+    },
+    WXEP: {
+        address: "2HmJ717Smn26MRn4PzmbGf29Z5d2nU6Jqre7HyELNsX3",
+        symbol: "XEP",
+        name: "Wrapped XEP",
+        decimals: 9,
+        logoURI: "https://www.electraprotocol.com/wp-content/uploads/2021/10/electra-protocol-logo.png",
+        tags: ["bridge", "Chain"],
+        displayInSpotTrading: true,
+        displayInMarketMaking: false
+    },
+};

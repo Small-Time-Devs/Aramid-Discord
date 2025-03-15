@@ -20,6 +20,7 @@ import {
     fetchTokenBalances
 } from '../../spotTrading/functions/utils.mjs';
 import { showTokenMakingConfig } from '../ui/tokenConfig.mjs';
+import { popularTokens } from '../../../../../src/globals/global.mjs';
 
 /**
  * Handle the "Select Token" button click
@@ -189,23 +190,23 @@ export async function showTokenSelectionOptions(interaction) {
         }
         
         // Add some popular tokens as buttons if we have room
-        const popularTokensRow = new ActionRowBuilder()
-            .addComponents(
+        const popularTokensRow = new ActionRowBuilder();
+        
+        // Filter tokens by the displayInMarketMaking flag
+        const marketMakingTokens = Object.entries(popularTokens)
+            .filter(([_, token]) => token.displayInMarketMaking)
+            .slice(0, 3); // Limit to 3 tokens for UI space
+        
+        marketMakingTokens.forEach(([key, token]) => {
+            popularTokensRow.addComponents(
                 new ButtonBuilder()
-                    .setCustomId('mm_popular_token_rac')
-                    .setLabel('RAC')
-                    .setStyle(ButtonStyle.Primary),
-                new ButtonBuilder()
-                    .setCustomId('mm_popular_token_bonk')
-                    .setLabel('BONK')
-                    .setStyle(ButtonStyle.Primary),
-                new ButtonBuilder()
-                    .setCustomId('mm_popular_token_jup')
-                    .setLabel('JUP')
+                    .setCustomId(`mm_popular_token_${key.toLowerCase()}`)
+                    .setLabel(token.symbol)
                     .setStyle(ButtonStyle.Primary)
             );
+        });
             
-        if (rows.length < 5) {
+        if (rows.length < 5 && popularTokensRow.components.length > 0) {
             rows.push(popularTokensRow);
         }
         
@@ -254,30 +255,21 @@ export async function showTokenSelectionOptions(interaction) {
  */
 export async function handlePopularTokenSelect(interaction) {
     try {
-        const tokenKey = interaction.customId.replace('mm_popular_token_', '');
+        const tokenKey = interaction.customId.replace('mm_popular_token_', '').toUpperCase();
         const userId = interaction.user.id;
-        let tokenAddress = '';
         
-        // Map token keys to addresses
-        switch (tokenKey) {
-            case 'rac':
-                tokenAddress = 'YtfMZ4jg2ubdz4GsNdJWpJk3YTM5pUdMrFN7N6yvqZA';
-                break;
-            case 'bonk':
-                tokenAddress = 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263';
-                break;
-            case 'jup':
-                tokenAddress = 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN';
-                break;
-            default:
-                await interaction.reply({
-                    content: '❌ Invalid token selection.',
-                    ephemeral: true
-                });
-                return;
+        // Get the token from the centralized popular tokens list
+        const token = popularTokens[tokenKey];
+        
+        if (!token || !token.address) {
+            await interaction.reply({
+                content: '❌ Invalid token selection or token not found in our database.',
+                ephemeral: true
+            });
+            return;
         }
         
-        await setMarketMakingToken(interaction, tokenAddress);
+        await setMarketMakingToken(interaction, token.address);
         
     } catch (error) {
         console.error('Error handling popular token selection for market making:', error);

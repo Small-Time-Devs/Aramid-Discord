@@ -16,7 +16,8 @@ import {
     handleTokenSelection,
     handleBuyNewToken,
     handleEnterTokenAddress,
-    handlePopularTokenSelect
+    handlePopularTokenSelect,
+    handleRecentTokenSelect
 } from './actions/tokenSelection.mjs';
 
 import {
@@ -56,6 +57,7 @@ export {
     handleBuyNewToken,
     handleEnterTokenAddress,
     handlePopularTokenSelect,
+    handleRecentTokenSelect,
     handleSetPurchaseAmount,
     handlePurchaseAmountSubmit,
     handleSetSlippage,
@@ -79,5 +81,19 @@ export {
 export const state = {
     solanaBuyTokenConfig: {},
     solanaSellTokenConfig: {},
-    tokenBalancesCache: {}
+    tokenBalancesCache: {},
+    isLoadingBalances: {}
 };
+
+// Export a function to handle interaction routing
+export async function handleSpotTradingInteraction(interaction) {
+    // Simple routing based on interaction ID
+    if (interaction.customId === 'back_to_spot_trading') {
+        return await handleBackToSpotTrading(interaction);
+    }
+    
+    // Add other interaction handlers as needed
+    
+    // Return false if the interaction wasn't handled
+    return false;
+}

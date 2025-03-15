@@ -5,7 +5,7 @@ import path from 'path';
 import bs58 from 'bs58';
 import promiseRetry from 'promise-retry';
 import fetch from "node-fetch";
-import { globalStaticConfig, globalURLS } from '../../../../../src/globals/global.mjs';
+import { globalStaticConfig, globalURLS, popularTokens } from '../../../../../src/globals/global.mjs';
 import { Keypair, Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { createTransferInstruction, createAssociatedTokenAccountInstruction, getOrCreateAssociatedTokenAccount, AccountLayout, 
   TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, createCloseAccountInstruction  } from '@solana/spl-token';
@@ -17,13 +17,6 @@ const HELIUS_RPC = process.env.HELIUS_RPC;
 
 const TOKEN_MAP_URL = 'https://cdn.jsdelivr.net/gh/solana-labs/token-list@main/src/tokens/solana.tokenlist.json';
 let tokenMap = new Map();
-
-const POPULAR_TOKENS = {
-  'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN': { name: 'Jupiter', symbol: 'JUP' },
-  'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263': { name: 'Bonk', symbol: 'BONK' },
-  'YtfMZ4jg2ubdz4GsNdJWpJk3YTM5pUdMrFN7N6yvqZA': { name: 'Racoon', symbol: 'RAC' },
-  // Add more tokens as needed
-};
 
 if (!HELIUS_RPC) {
   throw new Error('HELIUS_RPC is not defined in the .env file.');
@@ -44,6 +37,62 @@ async function fetchTokenMap() {
     console.error('Error loading token map:', error.message);
   }
   return tokenMap;
+}
+
+/**
+ * Get popular token by symbol
+ * @param {string} symbol - Token symbol (e.g., 'SOL', 'USDC')
+ * @returns {Object|null} - Token details or null if not found
+ */
+export function getPopularToken(symbol) {
+    // Convert to uppercase to ensure case-insensitive matching
+    const upperSymbol = symbol.toUpperCase();
+    
+    // Use the centralized popularTokens dictionary from globals.mjs
+    return popularTokens[upperSymbol] || null;
+}
+
+/**
+ * Get popular token by address
+ * @param {string} address - Token contract address
+ * @returns {Object|null} - Token details or null if not found
+ */
+export function getPopularTokenByAddress(address) {
+    // Find the token in the popularTokens object that matches the address
+    const token = Object.values(popularTokens).find(token => 
+        token.address.toLowerCase() === address.toLowerCase()
+    );
+    
+    return token || null;
+}
+
+/**
+ * Get list of popular tokens
+ * @returns {Array} - Array of popular token objects
+ */
+export function getPopularTokens() {
+    // Convert the popularTokens object to an array
+    return Object.values(popularTokens);
+}
+
+/**
+ * Get list of popular tokens for spot trading
+ * @returns {Array} - Array of popular token objects filtered for spot trading
+ */
+export function getSpotTradingTokens() {
+    // Filter the popularTokens to only include ones marked for spot trading
+    return Object.values(popularTokens)
+        .filter(token => token.displayInSpotTrading);
+}
+
+/**
+ * Get list of popular tokens for market making
+ * @returns {Array} - Array of popular token objects filtered for market making
+ */
+export function getMarketMakingTokens() {
+    // Filter the popularTokens to only include ones marked for market making
+    return Object.values(popularTokens)
+        .filter(token => token.displayInMarketMaking);
 }
 
 /**
@@ -83,6 +132,18 @@ export async function fetchSolBalance(publicKey) {
  */
 export async function fetchTokenDetails(tokenAddress) {
     try {
+        // Check if this is a popular token first
+        const popularToken = getPopularTokenByAddress(tokenAddress);
+        if (popularToken) {
+            return {
+                name: popularToken.name,
+                symbol: popularToken.symbol,
+                address: popularToken.address,
+                decimals: popularToken.decimals,
+                logoURI: popularToken.logoURI
+            };
+        }
+
         console.log(`Fetching token details for: ${tokenAddress}`);
         
         // Use the correct Raydium pools/info/mint endpoint structure
@@ -141,17 +202,6 @@ export async function fetchTokenDetails(tokenAddress) {
             }
         } catch (onChainError) {
             console.error(`On-chain fallback failed: ${onChainError.message}`);
-        }
-        
-        // Check if it's a known popular token
-        if (POPULAR_TOKENS[tokenAddress]) {
-            console.log(`Using pre-defined popular token data for: ${tokenAddress}`);
-            return {
-                name: POPULAR_TOKENS[tokenAddress].name,
-                symbol: POPULAR_TOKENS[tokenAddress].symbol,
-                decimals: 9,
-                logoURI: null
-            };
         }
         
         console.log('Using default token info as all methods failed');

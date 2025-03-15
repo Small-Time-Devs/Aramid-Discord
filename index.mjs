@@ -143,6 +143,11 @@ client.on('interactionCreate', async (interaction) => {
                 case 'token_address_input_modal':
                     await handleTokenAddressSubmit(interaction);
                     break;
+                case 'mm_token_address_modal':
+                    // Import dynamically to avoid circular dependencies
+                    const { handleTokenAddressSubmit: handleMMTokenAddressSubmit } = await import('./applications/chains/solana/marketMaking/actions/tokenSelection.mjs');
+                    await handleMMTokenAddressSubmit(interaction);
+                    break;
                 case 'coin_research_address_modal':
                     // Import dynamically to avoid circular dependencies
                     const { handleAddressSubmit } = await import('./applications/chains/solana/coinResearch/coinResearchMain.mjs');

@@ -643,11 +643,14 @@ export async function handleExecutePurchase(interaction) {
  */
 export async function handleBackToSpotTrading(interaction) {
     try {
+        await interaction.deferUpdate();
+        
+        // Show the main Solana spot trading menu instead of token selection
         await showSolanaSpotTradingMenu(interaction);
     } catch (error) {
-        console.error('Error returning to trading menu:', error);
+        console.error('Error navigating back to spot trading menu:', error);
         await interaction.followUp({
-            content: '❌ Failed to return to trading menu. Please try again.',
+            content: '❌ Error returning to the menu. Please try again.',
             ephemeral: true
         });
     }

@@ -72,6 +72,7 @@ export async function handleMarketMakingInteractions(interaction) {
                     return true;
                     
                 case 'mm_enter_token_address':
+                    const { handleTokenAddressInput } = await import('./actions/tokenSelection.mjs');
                     await handleTokenAddressInput(interaction);
                     return true;
                     
@@ -352,6 +353,7 @@ export async function handleMarketMakingInteractions(interaction) {
             
             switch (interaction.customId) {
                 case 'mm_token_address_modal':
+                    const { handleTokenAddressSubmit } = await import('./actions/tokenSelection.mjs');
                     await handleTokenAddressSubmit(interaction);
                     return true;
                     
