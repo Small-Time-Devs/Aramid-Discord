@@ -170,8 +170,15 @@ export async function handleApplicationInteractions(interaction) {
                     
                 case 'token_address_modal':
                 case 'token_address_input_modal':
-                    console.log('[MODAL DEBUG] Processing token address modal');
-                    await handleTokenAddressSubmit(interaction);
+                case 'coin_research_address_modal':  // Add coin research modal to this case group
+                    console.log('[MODAL DEBUG] Processing address input modal: ' + interaction.customId);
+                    
+                    // Route to the appropriate handler based on the modal ID
+                    if (interaction.customId === 'coin_research_address_modal') {
+                        await handleAddressSubmit(interaction);
+                    } else {
+                        await handleTokenAddressSubmit(interaction);
+                    }
                     return;
                     
                 case 'purchase_amount_modal':
@@ -181,6 +188,18 @@ export async function handleApplicationInteractions(interaction) {
                     
                 case 'sell_percentage_modal':
                     await handleSellPercentageSubmit(interaction);
+                    return;
+                    
+                case 'mm_token_address_modal':
+                    await handleMarketMakerTokenAddressSubmit(interaction);
+                    return;
+                    
+                case 'mm_spread_modal':
+                    await handleSpreadSettingsSubmit(interaction);
+                    return;
+                    
+                case 'mm_range_modal':
+                    await handleRangeSettingsSubmit(interaction);
                     return;
                     
                 default:
@@ -647,8 +666,6 @@ export async function handleApplicationInteractions(interaction) {
                     console.log('[MODAL DEBUG] Processing coin research address modal');
                     await handleAddressSubmit(interaction);
                     return;
-                    
-                // ... more modal cases ...
             }
         }
 

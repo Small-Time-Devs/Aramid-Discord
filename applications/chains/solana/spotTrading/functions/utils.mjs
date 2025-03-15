@@ -76,101 +76,142 @@ export async function fetchSolBalance(publicKey) {
   }
 }
 
-export async function fetchTokenPrice(mint) {
-  try {
-    const url = `https://api-v3.raydium.io/mint/price?mints=${mint}`;
-    console.log(`Fetching token price from: ${url}`);
-
-    const response = await axios.get(url);
-
-    if (response.status === 200 && response.data?.data?.[mint]) {
-      const price = parseFloat(response.data.data[mint]);
-      console.log(`Token price for ${mint}: ${price}`);
-      return price;
+/**
+ * Fetch token details from various sources
+ * @param {string} tokenAddress - Token mint address
+ * @returns {Promise<Object>} Token details
+ */
+export async function fetchTokenDetails(tokenAddress) {
+    try {
+        console.log(`Fetching token details for: ${tokenAddress}`);
+        
+        // Use the correct Raydium pools/info/mint endpoint structure
+        const raydiumUrl = `https://api-v3.raydium.io/pools/info/mint?mint1=So11111111111111111111111111111111111111112&mint2=${tokenAddress}&poolType=all&poolSortField=default&sortType=desc&pageSize=1&page=1`;
+        console.log(`Fetching token details from: ${raydiumUrl}`);
+        
+        const response = await axios.get(raydiumUrl);
+        console.log(`API response status: ${response.status}`);
+        console.log(`Response snippet: ${JSON.stringify(response.data).substring(0, 300)}...`);
+        
+        // Check if we got valid token info from pool data
+        if (response.data && response.data.success && response.data.data && response.data.data.data && response.data.data.data.length > 0) {
+            const poolData = response.data.data.data[0];
+            
+            // Extract token details from the pool data
+            let tokenData = null;
+            if (poolData.mintA && poolData.mintA.address === tokenAddress) {
+                tokenData = {
+                    name: poolData.mintA.name || 'Unknown Token',
+                    symbol: poolData.mintA.symbol || 'UNKNOWN',
+                    decimals: poolData.mintA.decimals || 9,
+                    logoURI: poolData.mintA.logoURI || null
+                };
+            } else if (poolData.mintB && poolData.mintB.address === tokenAddress) {
+                tokenData = {
+                    name: poolData.mintB.name || 'Unknown Token',
+                    symbol: poolData.mintB.symbol || 'UNKNOWN',
+                    decimals: poolData.mintB.decimals || 9,
+                    logoURI: poolData.mintB.logoURI || null
+                };
+            }
+            
+            if (tokenData) {
+                console.log(`Token data found: ${tokenData.symbol} (${tokenData.name})`);
+                return tokenData;
+            }
+        }
+        
+        // Last resort: try to get on-chain data
+        console.log(`Using on-chain fallback for token: ${tokenAddress}`);
+        const connection = new Connection(process.env.HELIUS_RPC);
+        
+        try {
+            const tokenInfo = await connection.getParsedAccountInfo(new PublicKey(tokenAddress));
+            
+            if (tokenInfo?.value?.data?.parsed?.info) {
+                const info = tokenInfo.value.data.parsed.info;
+                console.log(`On-chain token data found: ${info.symbol || 'No symbol'}`);
+                
+                return {
+                    name: info.name || 'Unknown Token',
+                    symbol: info.symbol || 'UNKNOWN',
+                    decimals: info.decimals || 9,
+                    logoURI: null
+                };
+            }
+        } catch (onChainError) {
+            console.error(`On-chain fallback failed: ${onChainError.message}`);
+        }
+        
+        // Check if it's a known popular token
+        if (POPULAR_TOKENS[tokenAddress]) {
+            console.log(`Using pre-defined popular token data for: ${tokenAddress}`);
+            return {
+                name: POPULAR_TOKENS[tokenAddress].name,
+                symbol: POPULAR_TOKENS[tokenAddress].symbol,
+                decimals: 9,
+                logoURI: null
+            };
+        }
+        
+        console.log('Using default token info as all methods failed');
+        return {
+            name: 'Unknown Token',
+            symbol: tokenAddress.substring(0, 6),
+            decimals: 9,
+            logoURI: null
+        };
+    } catch (error) {
+        console.error(`Error fetching token details: ${error.message}`);
+        // Return minimal default info
+        return {
+            name: 'Unknown Token',
+            symbol: tokenAddress.substring(0, 6),
+            decimals: 9,
+            logoURI: null
+        };
     }
-
-    console.error(`Token price not found for mint address: ${mint}`);
-    return null;
-  } catch (error) {
-    console.error(`Error fetching token price for ${mint}:`, error.message);
-    return null;
-  }
 }
 
-export async function fetchTokenDetails(mint2) {
-  try {
-    // Try to get token details from our mapping first
-    if (POPULAR_TOKENS[mint2]) {
-      console.log(`Found token details in local mapping: ${POPULAR_TOKENS[mint2].name}`);
-      return POPULAR_TOKENS[mint2];
-    }
-    
-    const mint1 = 'So11111111111111111111111111111111111111112'; // Default SOL mint address
-    const url = `${globalURLS.raydiumMintAPI}?mint1=${mint1}&mint2=${mint2}&poolType=all&poolSortField=default&sortType=desc&pageSize=1&page=1`;
-
-    console.log(`Fetching token details from: ${url}`);
-
-    const response = await axios.get(url);
-    console.log('API response status:', response.status);
-    
-    // For debugging, print first part of the response data
-    let responseSnippet = JSON.stringify(response.data).substring(0, 200) + '...';
-    console.log('Response snippet:', responseSnippet);
-
-    if (response.status === 200) {
-      if (response.data?.data?.data?.length > 0) {
-        // Main path - token found in API
-        const tokenData = response.data.data.data[0];
-        console.log('Token data found:', tokenData.name || 'No name in data');
+/**
+ * Fetch token price from Raydium API
+ * @param {string} tokenAddress - Token mint address
+ * @returns {Promise<Object>} Token price data
+ */
+export async function fetchTokenPrice(tokenAddress) {
+    try {
+        const url = `https://api-v3.raydium.io/mint/price?mints=${tokenAddress}`;
+        console.log(`Fetching token price from: ${url}`);
+        
+        const response = await axios.get(url);
+        
+        // Handle the specific response format from the Raydium API
+        // {"id":"d01351b7-4247-4ba2-ad55-efd35ee5e0d6","success":true,"data":{"BRq2ZRrcwtdnQFfwK39JW4z8xRCkBuyxUHftz4M5pump":"0.0005543157141024619"}}
+        let price = 0;
+        if (response.data && response.data.success && response.data.data && response.data.data[tokenAddress]) {
+            price = parseFloat(response.data.data[tokenAddress]) || 0;
+        }
+        
+        console.log(`Token price for ${tokenAddress}: ${price}`);
+        
+        // Return price data without Jupiter fallback
         return {
-          name: tokenData.name || tokenData.symbol || 'Unknown Token',
-          symbol: tokenData.symbol || 'Unknown'
+            price,
+            change1h: 0,
+            change24h: 0,
+            change7d: 0,
+            volume24h: 0
         };
-      } else if (response.data?.data?.tokens) {
-        // Alternative path - check if token is in tokens list
-        const token = response.data.data.tokens.find(t => t.mint === mint2);
-        if (token) {
-          console.log('Token found in tokens list:', token.name);
-          return {
-            name: token.name || token.symbol || 'Unknown Token',
-            symbol: token.symbol || 'Unknown'
-          };
-        }
-      }
-      
-      // If no data from API, try to fetch from Jupiter API as fallback
-      console.log('No token details found in Raydium API, trying Jupiter API');
-      const jupiterResponse = await axios.get(`https://token.jup.ag/all`);
-      
-      if (jupiterResponse.status === 200 && jupiterResponse.data) {
-        const jupToken = jupiterResponse.data.find(t => t.address === mint2);
-        if (jupToken) {
-          console.log('Token found in Jupiter API:', jupToken.name);
-          return {
-            name: jupToken.name || jupToken.symbol || 'Unknown Token',
-            symbol: jupToken.symbol || 'Unknown'
-          };
-        }
-      }
+    } catch (error) {
+        console.error(`Error fetching token price: ${error.message}`);
+        return {
+            price: 0,
+            change1h: 0,
+            change24h: 0,
+            change7d: 0,
+            volume24h: 0
+        };
     }
-
-    // Last resort - check if it's one of the well-known tokens
-    if (mint2 === 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN') {
-      return { name: 'Jupiter', symbol: 'JUP' };
-    } else if (mint2 === 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263') {
-      return { name: 'Bonk', symbol: 'BONK' };
-    } else if (mint2 === 'YtfMZ4jg2ubdz4GsNdJWpJk3YTM5pUdMrFN7N6yvqZA') {
-      return { name: 'RAC', symbol: 'RAC' };
-    }
-
-    // If no token information was found from any source
-    console.error(`Token details not found for mint address: ${mint2}`);
-    return { name: 'Unknown Token', symbol: 'Unknown' };
-  } catch (error) {
-    console.error(`Error fetching token details for ${mint2}:`, error.message);
-    // Return default token info with the mint
-    return { name: 'Unknown Token', symbol: 'Unknown' };
-  }
 }
 
 export async function fetchTokenBalance(solPublicKey, mint) {

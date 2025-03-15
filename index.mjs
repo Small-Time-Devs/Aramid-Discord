@@ -143,6 +143,11 @@ client.on('interactionCreate', async (interaction) => {
                 case 'token_address_input_modal':
                     await handleTokenAddressSubmit(interaction);
                     break;
+                case 'coin_research_address_modal':
+                    // Import dynamically to avoid circular dependencies
+                    const { handleAddressSubmit } = await import('./applications/chains/solana/coinResearch/coinResearchMain.mjs');
+                    await handleAddressSubmit(interaction);
+                    break;
                 case 'verify_2fa_modal':
                     const code = interaction.fields.getTextInputValue('2fa_code');
                     const isValid = await verify2FACode(interaction.user.id, code);

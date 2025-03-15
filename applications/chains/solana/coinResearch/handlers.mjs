@@ -131,6 +131,55 @@ export async function handleCoinResearchInteractions(interaction) {
                 await handleAskAramidAi(interaction, tokenAddress);
                 return true;
             }
+            
+            // Add handlers for the section buttons - these must be handled first
+            if (interaction.customId.startsWith('show_market_')) {
+                const tokenAddress = interaction.customId.replace('show_market_', '');
+                console.log(`[COIN RESEARCH] Showing market section for token: ${tokenAddress}`);
+                try {
+                    const { displayAnalysisSection } = await import('./ui/researchDisplay.mjs');
+                    await displayAnalysisSection(interaction, tokenAddress, 'market');
+                } catch (error) {
+                    console.error(`[COIN RESEARCH] Error showing market section: ${error.message}`);
+                    await interaction.followUp({
+                        content: `❌ Error showing market section: ${error.message}`,
+                        ephemeral: true
+                    });
+                }
+                return true;
+            }
+            
+            if (interaction.customId.startsWith('show_technical_')) {
+                const tokenAddress = interaction.customId.replace('show_technical_', '');
+                console.log(`[COIN RESEARCH] Showing technical section for token: ${tokenAddress}`);
+                try {
+                    const { displayAnalysisSection } = await import('./ui/researchDisplay.mjs');
+                    await displayAnalysisSection(interaction, tokenAddress, 'technical');
+                } catch (error) {
+                    console.error(`[COIN RESEARCH] Error showing technical section: ${error.message}`);
+                    await interaction.followUp({
+                        content: `❌ Error showing technical section: ${error.message}`,
+                        ephemeral: true
+                    });
+                }
+                return true;
+            }
+            
+            if (interaction.customId.startsWith('show_risk_')) {
+                const tokenAddress = interaction.customId.replace('show_risk_', '');
+                console.log(`[COIN RESEARCH] Showing risk section for token: ${tokenAddress}`);
+                try {
+                    const { displayAnalysisSection } = await import('./ui/researchDisplay.mjs');
+                    await displayAnalysisSection(interaction, tokenAddress, 'risk');
+                } catch (error) {
+                    console.error(`[COIN RESEARCH] Error showing risk section: ${error.message}`);
+                    await interaction.followUp({
+                        content: `❌ Error showing risk section: ${error.message}`,
+                        ephemeral: true
+                    });
+                }
+                return true;
+            }
         }
         
         // NOTE: Modal submissions are now handled directly in applicationHandler.mjs
@@ -168,7 +217,12 @@ export async function handleCoinResearchInteractions(interaction) {
  */
 async function handleShowBasicInfo(interaction, tokenAddress) {
     try {
-        await interaction.deferUpdate();
+        // Use deferUpdate to acknowledge the interaction first
+        await interaction.deferUpdate().catch(error => {
+            console.error(`[COIN RESEARCH] Error deferring update: ${error.message}`);
+            // If we failed to defer, it may be already deferred or replied, so just continue
+        });
+        
         console.log(`[COIN RESEARCH] Processing basic info for token: ${tokenAddress}`);
         
         const userId = interaction.user.id;
@@ -223,7 +277,7 @@ async function handleAskAramidAi(interaction, tokenAddress) {
         
         // Let user know we're fetching AI advice
         await interaction.editReply({
-            content: '🤖 Asking Aramid AI for analysis...\nThis may take up to 30 seconds.',
+            content: '🤖 Asking Aramid AI for analysis...\nThis may take 1-2 minutes for complex tokens.',
             embeds: [],
             components: []
         });
@@ -233,7 +287,17 @@ async function handleAskAramidAi(interaction, tokenAddress) {
         if (!state.activeResearch[userId] || state.activeResearch[userId].tokenAddress !== tokenAddress) {
             // Fetch token info
             console.log(`[COIN RESEARCH] Fetching token info for AI analysis of ${tokenAddress}`);
-            tokenInfo = await fetchTokenInfo(tokenAddress);
+            try {
+                tokenInfo = await fetchTokenInfo(tokenAddress);
+            } catch (tokenError) {
+                console.error(`[COIN RESEARCH] Error fetching token info: ${tokenError.message}`);
+                tokenInfo = {
+                    metadata: {
+                        name: 'Unknown Token',
+                        symbol: 'UNKNOWN'
+                    }
+                };
+            }
             
             // Store in state
             state.activeResearch[userId] = {
@@ -246,21 +310,76 @@ async function handleAskAramidAi(interaction, tokenAddress) {
             tokenInfo = state.activeResearch[userId].tokenInfo;
         }
         
-        // Fetch AI advice
+        // Show a progress indicator every 15 seconds
+        const progressInterval = setInterval(async () => {
+            try {
+                await interaction.editReply({
+                    content: `🤖 Still analyzing ${tokenAddress}...\nAI analysis in progress, please wait. This can take 1-2 minutes for complex tokens.`,
+                    embeds: [],
+                    components: []
+                });
+            } catch (err) {
+                console.error('Error updating progress:', err);
+                clearInterval(progressInterval);
+            }
+        }, 15000);
+        
+        // Fetch AI advice with proper error handling
         console.log(`[COIN RESEARCH] Requesting AI advice for ${tokenAddress}`);
-        const aiResponse = await fetchTokenAiAdvice(tokenAddress);
-        console.log(`[COIN RESEARCH] Received AI advice for ${tokenAddress}`);
-        
-        // Display AI analysis results
-        await displayAiAnalysis(interaction, tokenAddress, aiResponse, tokenInfo);
-        
-    } catch (error) {
-        console.error(`Error getting AI advice for token ${tokenAddress}:`, error);
-        
+        let aiResponse;
         try {
+            aiResponse = await fetchTokenAiAdvice(tokenAddress);
+            // Clear the progress indicator
+            clearInterval(progressInterval);
+            
+            console.log(`[COIN RESEARCH] Received AI advice for ${tokenAddress}`);
+            
+            // Add detailed logging of the response
+            if (aiResponse) {
+                console.log(`[COIN RESEARCH] AI response type: ${typeof aiResponse}`);
+                console.log(`[COIN RESEARCH] AI response is array: ${Array.isArray(aiResponse)}`);
+                
+                if (Array.isArray(aiResponse) && aiResponse.length > 0) {
+                    const analysis = aiResponse[0];
+                    console.log(`[COIN RESEARCH] First analysis properties: ${Object.keys(analysis).join(', ')}`);
+                    console.log(`[COIN RESEARCH] Analysis name: ${analysis.name}`);
+                    console.log(`[COIN RESEARCH] Analysis personality: ${analysis.personality}`);
+                    console.log(`[COIN RESEARCH] Analysis decision: ${analysis.decision}`);
+                    console.log(`[COIN RESEARCH] Analysis response length: ${analysis.response ? analysis.response.length : 'N/A'}`);
+                } else {
+                    console.log(`[COIN RESEARCH] AI response structure: ${JSON.stringify(aiResponse).substring(0, 200)}...`);
+                }
+            } else {
+                console.log(`[COIN RESEARCH] AI response is null or undefined`);
+            }
+            
+            // Store the AI response in state
+            state.activeResearch[userId].aiResponse = aiResponse;
+            
+        } catch (aiError) {
+            // Clear the progress indicator
+            clearInterval(progressInterval);
+            
+            console.error(`[COIN RESEARCH] Error fetching AI advice: ${aiError.message}`);
+            // Create fallback response
+            aiResponse = [{
+                name: 'TokenAnalyst',
+                personality: 'Data analysis specialist',
+                response: `**Analysis Timeout**\n\nThe AI analysis for token ${tokenAddress} took too long to complete. This usually happens with complex tokens or during high network load.\n\n**Recommendations**\n\n- Try again later when the system is less busy\n- Check this token on Solscan or Birdeye directly\n- Consider using the basic research view for now`,
+                decision: 'Analysis timed out'
+            }];
+            
+            // Store the fallback response in state as well
+            state.activeResearch[userId].aiResponse = aiResponse;
+        }
+        
+        // Display AI analysis results with proper error handling
+        try {
+            await displayAiAnalysis(interaction, tokenAddress, aiResponse, tokenInfo);
+        } catch (displayError) {
+            console.error(`[COIN RESEARCH] Error displaying AI analysis: ${displayError.message}`);
             await interaction.editReply({
-                content: `❌ Error getting AI analysis: ${error.message}`,
-                embeds: [],
+                content: `❌ Error showing analysis: ${displayError.message}. Please try again later.`,
                 components: [
                     new ActionRowBuilder()
                         .addComponents(
@@ -275,17 +394,53 @@ async function handleAskAramidAi(interaction, tokenAddress) {
                         )
                 ]
             });
-        } catch (editError) {
-            console.error('Error editing reply:', editError);
-            
-            try {
-                await interaction.followUp({
-                    content: `❌ Error processing AI analysis: ${error.message}`,
-                    ephemeral: true
+        }
+        
+    } catch (error) {
+        console.error(`Error getting AI advice for token ${tokenAddress}:`, error);
+        
+        try {
+            // Check if we can edit the reply
+            if (interaction.deferred || interaction.replied) {
+                await interaction.editReply({
+                    content: `❌ Error getting AI analysis: ${error.message}`,
+                    embeds: [],
+                    components: [
+                        new ActionRowBuilder()
+                            .addComponents(
+                                new ButtonBuilder()
+                                    .setCustomId(`show_basic_info_${tokenAddress}`)
+                                    .setLabel('Show Basic Info Instead')
+                                    .setStyle(ButtonStyle.Primary),
+                                new ButtonBuilder()
+                                    .setCustomId('back_to_research')
+                                    .setLabel('Back to Research')
+                                    .setStyle(ButtonStyle.Secondary)
+                            )
+                    ]
                 });
-            } catch (followUpError) {
-                console.error('Error sending follow-up:', followUpError);
+            } else {
+                // Try to reply if not already replied
+                await interaction.reply({
+                    content: `❌ Error processing AI analysis: ${error.message}`,
+                    ephemeral: true,
+                    components: [
+                        new ActionRowBuilder()
+                            .addComponents(
+                                new ButtonBuilder()
+                                    .setCustomId(`show_basic_info_${tokenAddress}`)
+                                    .setLabel('Show Basic Info Instead')
+                                    .setStyle(ButtonStyle.Primary),
+                                new ButtonBuilder()
+                                    .setCustomId('back_to_research')
+                                    .setLabel('Back to Research')
+                                    .setStyle(ButtonStyle.Secondary)
+                            )
+                    ]
+                });
             }
+        } catch (replyError) {
+            console.error('Error sending error response:', replyError);
         }
     }
 }

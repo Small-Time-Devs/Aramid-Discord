@@ -74,92 +74,121 @@ export async function showAddressEntryModal(interaction) {
             .setCustomId('coin_research_address_modal')
             .setTitle('Research Solana Token');
             
-        // Create a very simple text input with minimal options
-        const addressInput = new TextInputBuilder()
+            const tokenAddressInput = new TextInputBuilder()
             .setCustomId('token_address')
             .setLabel('Token Contract Address')
             .setStyle(TextInputStyle.Short)
+            .setPlaceholder('Enter Solana token address')
             .setRequired(true);
-            
-        // Add input to modal
-        modal.addComponents(new ActionRowBuilder().addComponents(addressInput));
+
+        const row = new ActionRowBuilder().addComponents(tokenAddressInput);
+        modal.addComponents(row);
         
-        // Show the modal
+        console.log('Showing modal with ID:', modal.data.custom_id);
         await interaction.showModal(modal);
-        console.log('[COIN RESEARCH] Modal shown successfully');
-        
     } catch (error) {
-        console.error('[COIN RESEARCH] Error showing token address modal:', error);
-        // Try to respond with an error message
-        try {
-            await interaction.reply({
-                content: '❌ Error showing address input. Please try again.',
-                ephemeral: true
-            });
-        } catch (replyError) {
-            console.error('[COIN RESEARCH] Error sending error reply:', replyError);
-        }
+        console.error('Error showing token address modal:', error);
+        await interaction.reply({
+            content: `❌ Failed to open token address input: ${error.message}. Please try again.`,
+            ephemeral: true
+        });
     }
 }
 
 /**
- * Handle address submission and start research - FIXED TO MATCH TOKEN SELECTION PATTERN
+ * Handle "Enter Token Address" button click
+ */
+export async function handleEnterTokenAddress(interaction) {
+    try {
+        console.log('Opening token address modal...');
+        
+        // Use consistent modal ID and input field name
+        const modal = new ModalBuilder()
+            .setCustomId('token_address_modal')
+            .setTitle('Enter Token Address');
+
+        const tokenAddressInput = new TextInputBuilder()
+            .setCustomId('token_address')
+            .setLabel('Token Contract Address')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('Enter Solana token address')
+            .setRequired(true);
+
+        const row = new ActionRowBuilder().addComponents(tokenAddressInput);
+        modal.addComponents(row);
+        
+        console.log('Showing modal with ID:', modal.data.custom_id);
+        await interaction.showModal(modal);
+    } catch (error) {
+        console.error('Error showing token address modal:', error);
+        await interaction.reply({
+            content: `❌ Failed to open token address input: ${error.message}. Please try again.`,
+            ephemeral: true
+        });
+    }
+}
+
+/**
+ * Handle address submission and start research - MATCHING TOKEN SUBMISSION PATTERN
  * @param {Object} interaction - Modal submit interaction
  */
 export async function handleAddressSubmit(interaction) {
     try {
-        // First defer the reply to prevent timeout
-        await interaction.deferReply({ ephemeral: true });
-        console.log('[COIN RESEARCH] Processing coin research address submission');
+        console.log('[COIN RESEARCH] Processing address submission from modal');
         
-        // Get token address from modal fields
-        const tokenAddress = interaction.fields.getTextInputValue('token_address');
-        console.log(`[COIN RESEARCH] Token address received: ${tokenAddress}`);
+        // Get token address (same pattern as your token submission)
+        let tokenAddress;
+        if (interaction.fields.getTextInputValue('token_address')) {
+            tokenAddress = interaction.fields.getTextInputValue('token_address');
+        } else if (interaction.fields.getTextInputValue('token_address_input')) {
+            tokenAddress = interaction.fields.getTextInputValue('token_address_input');
+        } else {
+            throw new Error('Token address field not found in modal submission');
+        }
         
-        // Validate the token address
+        // Basic validation
         if (!tokenAddress || tokenAddress.trim() === '') {
-            await interaction.editReply({ 
-                content: '❌ Please provide a valid token address!' 
+            await interaction.reply({
+                content: '❌ Please provide a valid token address!',
+                ephemeral: true
             });
             return;
         }
         
-        // Update the UI to show we're working on it
-        await interaction.editReply({
-            content: `🔍 Researching token: \`${tokenAddress}\`\nPlease wait while I gather information...`
+        // Reply to user with loading message
+        await interaction.reply({
+            content: `🔍 Researching token: \`${tokenAddress}\`\nPlease wait while we gather information...`,
+            ephemeral: true
         });
         
-        // Save to state
+        // Store in state
         const userId = interaction.user.id;
         state.activeResearch[userId] = {
             tokenAddress: tokenAddress.trim(),
             startTime: Date.now()
         };
         
-        // Fetch token info
+        // Fetch token information
         console.log(`[COIN RESEARCH] Fetching token info for ${tokenAddress}`);
         const tokenInfo = await fetchTokenInfo(tokenAddress);
         
-        // Store in state
+        // Save to state
         state.activeResearch[userId].tokenInfo = tokenInfo;
         
-        // Display research results with the follow-up pattern
-        console.log('[COIN RESEARCH] Displaying token research results');
-        await displayTokenResearch(interaction, tokenAddress.trim(), tokenInfo);
+        // Display research results
+        await displayTokenResearch(interaction, tokenAddress, tokenInfo);
         
     } catch (error) {
         console.error('[COIN RESEARCH] Error in handleAddressSubmit:', error);
         
         try {
-            // If we've already replied (which we should have due to deferReply),
-            // then use editReply or followUp
-            if (interaction.deferred || interaction.replied) {
-                await interaction.editReply({ 
-                    content: `❌ Error researching token: ${error.message}. Please try again.`
+            if (!interaction.replied) {
+                await interaction.reply({ 
+                    content: `❌ Error researching token: ${error.message}. Please try again.`,
+                    ephemeral: true 
                 });
             } else {
-                // Fallback in case somehow we haven't replied yet
-                await interaction.reply({ 
+                await interaction.followUp({ 
                     content: `❌ Error researching token: ${error.message}. Please try again.`,
                     ephemeral: true 
                 });
